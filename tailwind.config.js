@@ -5,14 +5,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#162018",
-        moss: "#48634f",
-        mint: "#dff3e5",
-        coral: "#f47d6b",
-        gold: "#d4a017",
+        app: "rgb(var(--color-app) / <alpha-value>)",
+        panel: "rgb(var(--color-panel) / <alpha-value>)",
+        subtle: "rgb(var(--color-subtle) / <alpha-value>)",
+        ink: "rgb(var(--color-ink) / <alpha-value>)",
+        moss: "rgb(var(--color-moss) / <alpha-value>)",
+        mint: "rgb(var(--color-mint) / <alpha-value>)",
+        coral: "rgb(var(--color-coral) / <alpha-value>)",
+        gold: "rgb(var(--color-gold) / <alpha-value>)",
       },
       boxShadow: {
-        panel: "0 18px 50px rgba(22, 32, 24, 0.08)",
+        panel: "var(--shadow-panel)",
       },
     },
   },

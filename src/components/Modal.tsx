@@ -23,7 +23,7 @@ export function Modal({ open, title, description, footer, onClose, children }: M
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-ink/25" />
+          <div className="fixed inset-0 bg-ink/25 backdrop-blur-sm" />
         </TransitionChild>
 
         <div className="fixed inset-0 overflow-y-auto">
@@ -37,7 +37,7 @@ export function Modal({ open, title, description, footer, onClose, children }: M
               leaveFrom="translate-y-0 opacity-100"
               leaveTo="translate-y-2 opacity-0"
             >
-              <DialogPanel className="w-full max-w-2xl rounded-lg border border-ink/10 bg-white shadow-panel">
+              <DialogPanel className="w-full max-w-2xl rounded-lg border border-ink/10 bg-panel shadow-panel">
                 <div className="border-b border-ink/10 p-5">
                   <DialogTitle className="text-lg font-semibold text-ink">{title}</DialogTitle>
                   {description ? <p className="mt-1 text-sm text-ink/55">{description}</p> : null}

@@ -1,4 +1,13 @@
-import type { Account, AccountType, DashboardData, Platform, Snapshot, SnapshotSummary } from "./types";
+import type {
+  Account,
+  AccountType,
+  DashboardData,
+  DataFileInfo,
+  Platform,
+  Snapshot,
+  SnapshotAnalysis,
+  SnapshotSummary,
+} from "./types";
 
 const samplePlatforms: Platform[] = [
   { id: 1, name: "支付宝", sortOrder: 1 },
@@ -116,6 +125,22 @@ export async function getDashboardData() {
   }
 }
 
+export async function getDataFileInfo() {
+  try {
+    return await invokeCommand<DataFileInfo>("get_data_file_info");
+  } catch {
+    return { currentPath: "浏览器预览模式未连接本地数据库" };
+  }
+}
+
+export async function switchDataFile(input: { path: string }) {
+  return invokeCommand<DashboardData>("switch_data_file", { input });
+}
+
+export async function backupDataFile(input: { path: string }) {
+  return invokeCommand<DataFileInfo>("backup_data_file", { input });
+}
+
 export async function createPlatform(input: { name: string }) {
   return invokeCommand<DashboardData>("create_platform", { input });
 }
@@ -153,10 +178,38 @@ export async function updateAccountActive(input: { accountId: number; isActive: 
   return invokeCommand<DashboardData>("update_account_active", { input });
 }
 
+export async function updatePlatform(input: { platformId: number; name: string }) {
+  return invokeCommand<DashboardData>("update_platform", { input });
+}
+
+export async function movePlatform(input: { platformId: number; direction: "up" | "down" }) {
+  return invokeCommand<DashboardData>("move_platform", { input });
+}
+
+export async function updateAccount(input: { accountId: number; name: string }) {
+  return invokeCommand<DashboardData>("update_account", { input });
+}
+
+export async function moveAccount(input: { accountId: number; direction: "up" | "down" }) {
+  return invokeCommand<DashboardData>("move_account", { input });
+}
+
 export async function deleteAccount(input: { accountId: number }) {
   return invokeCommand<DashboardData>("delete_account", { input });
 }
 
 export async function deletePlatform(input: { platformId: number }) {
   return invokeCommand<DashboardData>("delete_platform", { input });
+}
+
+export async function getSnapshotAnalysis(input: { snapshotId: number }) {
+  try {
+    return await invokeCommand<SnapshotAnalysis>("get_snapshot_analysis", { input });
+  } catch {
+    return { snapshotId: input.snapshotId, items: [] };
+  }
+}
+
+export async function saveSnapshotAnalysis(input: SnapshotAnalysis) {
+  return invokeCommand<SnapshotAnalysis>("save_snapshot_analysis", { input });
 }

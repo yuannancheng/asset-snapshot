@@ -130,6 +130,51 @@ pub struct DashboardData {
     pub summaries: Vec<SnapshotSummary>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisItemType {
+    Income,
+    Expense,
+}
+
+impl AnalysisItemType {
+    pub fn from_db(value: &str) -> Self {
+        match value {
+            "expense" => Self::Expense,
+            _ => Self::Income,
+        }
+    }
+
+    pub fn as_db(&self) -> &'static str {
+        match self {
+            Self::Income => "income",
+            Self::Expense => "expense",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalysisItem {
+    #[serde(rename = "type")]
+    pub item_type: AnalysisItemType,
+    pub name: String,
+    pub amounts: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotAnalysis {
+    pub snapshot_id: i64,
+    pub items: Vec<AnalysisItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataFileInfo {
+    pub current_path: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatePlatformInput {
@@ -184,6 +229,41 @@ pub struct UpdateAccountActiveInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdatePlatformInput {
+    pub platform_id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MovePlatformInput {
+    pub platform_id: i64,
+    pub direction: MoveDirection,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAccountInput {
+    pub account_id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveAccountInput {
+    pub account_id: i64,
+    pub direction: MoveDirection,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MoveDirection {
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteAccountInput {
     pub account_id: i64,
 }
@@ -192,4 +272,22 @@ pub struct DeleteAccountInput {
 #[serde(rename_all = "camelCase")]
 pub struct DeletePlatformInput {
     pub platform_id: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSnapshotAnalysisInput {
+    pub snapshot_id: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchDataFileInput {
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupDataFileInput {
+    pub path: String,
 }

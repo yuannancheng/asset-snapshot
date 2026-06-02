@@ -1,33 +1,82 @@
 use crate::calculations::calculate_snapshot;
 use crate::models::{
-    Account, AccountType, AppError, CreateAccountInput, CreatePlatformInput, CreateSnapshotInput,
-    DashboardData, DeleteAccountInput, DeletePlatformInput, DeleteSnapshotInput, Platform, Snapshot,
-    SnapshotItem, SnapshotItemForCalc, SnapshotSummary, UpdateAccountActiveInput, UpdateSnapshotInput,
+    Account, AccountType, AnalysisItem, AnalysisItemType, AppError, CreateAccountInput,
+    CreatePlatformInput, CreateSnapshotInput, DashboardData, DeleteAccountInput,
+    DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, MoveAccountInput,
+    MoveDirection, MovePlatformInput, Platform, Snapshot, SnapshotAnalysis, SnapshotItem,
+    SnapshotItemForCalc, SnapshotSummary, UpdateAccountActiveInput, UpdateAccountInput,
+    UpdatePlatformInput, UpdateSnapshotInput,
 };
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use directories::ProjectDirs;
 use rusqlite::{params, Connection, Transaction};
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct AppDatabase {
     conn: Connection,
+    path: PathBuf,
 }
 
 impl AppDatabase {
     pub fn open_default() -> Result<Self> {
-        let path = default_database_path()?;
+        let path = configured_database_path()?.unwrap_or(default_database_path()?);
+        Self::open_path(path)
+    }
+
+    pub fn open_path(path: PathBuf) -> Result<Self> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).context("failed to create application data directory")?;
         }
 
-        let conn = Connection::open(path).context("failed to open sqlite database")?;
-        let db = Self { conn };
+        let conn = Connection::open(&path).context("failed to open sqlite database")?;
+        let db = Self { conn, path };
         db.migrate()?;
         db.seed_if_empty()?;
         Ok(db)
+    }
+
+    pub fn current_path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn remember_current_path(&self) -> Result<(), AppError> {
+        let path = app_config_path()?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create config directory {}", parent.display())
+            })?;
+        }
+        let config = DataFileConfig {
+            current_path: self.path.to_string_lossy().into_owned(),
+        };
+        let content = serde_json::to_string_pretty(&config)
+            .context("failed to serialize data file config")?;
+        fs::write(&path, content)
+            .with_context(|| format!("failed to write data file config {}", path.display()))?;
+        Ok(())
+    }
+
+    pub fn backup_to(&self, target_path: &Path) -> Result<(), AppError> {
+        if target_path == self.path {
+            return Err(AppError::Validation(
+                "备份路径不能与当前数据文件相同".into(),
+            ));
+        }
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create backup directory {}", parent.display())
+            })?;
+        }
+        self.conn
+            .execute_batch("PRAGMA wal_checkpoint(FULL);")
+            .context("failed to checkpoint sqlite database before backup")?;
+        fs::copy(&self.path, target_path)
+            .with_context(|| format!("failed to copy backup to {}", target_path.display()))?;
+        Ok(())
     }
 
     pub fn dashboard_data(&self) -> Result<DashboardData, AppError> {
@@ -113,7 +162,11 @@ impl AppDatabase {
         let transaction = self.conn.transaction()?;
         let changed = transaction.execute(
             "UPDATE snapshots SET date = ?1, note = ?2 WHERE id = ?3",
-            params![date, normalized_note(input.note.as_deref()), input.snapshot_id],
+            params![
+                date,
+                normalized_note(input.note.as_deref()),
+                input.snapshot_id
+            ],
         )?;
         if changed == 0 {
             return Err(AppError::Validation("快照不存在".into()));
@@ -151,6 +204,109 @@ impl AppDatabase {
         Ok(())
     }
 
+    pub fn update_platform(&self, input: UpdatePlatformInput) -> Result<(), AppError> {
+        let name = input.name.trim();
+        if name.is_empty() {
+            return Err(AppError::Validation("平台名称不能为空".into()));
+        }
+
+        let changed = self.conn.execute(
+            "UPDATE platforms SET name = ?1 WHERE id = ?2",
+            params![name, input.platform_id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::Validation("平台不存在".into()));
+        }
+        Ok(())
+    }
+
+    pub fn move_platform(&mut self, input: MovePlatformInput) -> Result<(), AppError> {
+        let platforms = self.platforms()?;
+        let Some(index) = platforms
+            .iter()
+            .position(|platform| platform.id == input.platform_id)
+        else {
+            return Err(AppError::Validation("平台不存在".into()));
+        };
+        let target_index = match input.direction {
+            MoveDirection::Up if index > 0 => index - 1,
+            MoveDirection::Down if index + 1 < platforms.len() => index + 1,
+            _ => return Ok(()),
+        };
+
+        let current = &platforms[index];
+        let target = &platforms[target_index];
+        let transaction = self.conn.transaction()?;
+        transaction.execute(
+            "UPDATE platforms SET sort_order = ?1 WHERE id = ?2",
+            params![target.sort_order, current.id],
+        )?;
+        transaction.execute(
+            "UPDATE platforms SET sort_order = ?1 WHERE id = ?2",
+            params![current.sort_order, target.id],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn update_account(&self, input: UpdateAccountInput) -> Result<(), AppError> {
+        let name = input.name.trim();
+        if name.is_empty() {
+            return Err(AppError::Validation("账户名称不能为空".into()));
+        }
+
+        let changed = self.conn.execute(
+            "UPDATE accounts SET name = ?1 WHERE id = ?2",
+            params![name, input.account_id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::Validation("账户不存在".into()));
+        }
+        Ok(())
+    }
+
+    pub fn move_account(&mut self, input: MoveAccountInput) -> Result<(), AppError> {
+        let account = self.conn.query_row(
+            "SELECT platform_id FROM accounts WHERE id = ?1",
+            params![input.account_id],
+            |row| row.get::<_, i64>(0),
+        );
+        let platform_id = match account {
+            Ok(platform_id) => platform_id,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return Err(AppError::Validation("账户不存在".into()))
+            }
+            Err(error) => return Err(error.into()),
+        };
+
+        let accounts = self.accounts_for_platform(platform_id)?;
+        let Some(index) = accounts
+            .iter()
+            .position(|account| account.id == input.account_id)
+        else {
+            return Err(AppError::Validation("账户不存在".into()));
+        };
+        let target_index = match input.direction {
+            MoveDirection::Up if index > 0 => index - 1,
+            MoveDirection::Down if index + 1 < accounts.len() => index + 1,
+            _ => return Ok(()),
+        };
+
+        let current = &accounts[index];
+        let target = &accounts[target_index];
+        let transaction = self.conn.transaction()?;
+        transaction.execute(
+            "UPDATE accounts SET sort_order = ?1 WHERE id = ?2",
+            params![target.sort_order, current.id],
+        )?;
+        transaction.execute(
+            "UPDATE accounts SET sort_order = ?1 WHERE id = ?2",
+            params![current.sort_order, target.id],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn delete_account(&self, input: DeleteAccountInput) -> Result<(), AppError> {
         let history_count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM snapshot_items WHERE account_id = ?1",
@@ -158,7 +314,9 @@ impl AppDatabase {
             |row| row.get(0),
         )?;
         if history_count > 0 {
-            return Err(AppError::Validation("账户已有历史快照，不能删除；可以停用账户".into()));
+            return Err(AppError::Validation(
+                "账户已有历史快照，不能删除；可以停用账户".into(),
+            ));
         }
 
         let changed = self.conn.execute(
@@ -208,6 +366,101 @@ impl AppDatabase {
         Ok(())
     }
 
+    pub fn snapshot_analysis(
+        &self,
+        input: GetSnapshotAnalysisInput,
+    ) -> Result<SnapshotAnalysis, AppError> {
+        self.ensure_snapshot_exists(input.snapshot_id)?;
+
+        let analysis_id = self.analysis_id_for_snapshot(input.snapshot_id)?;
+        let Some(analysis_id) = analysis_id else {
+            return Ok(SnapshotAnalysis {
+                snapshot_id: input.snapshot_id,
+                items: Vec::new(),
+            });
+        };
+
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, type, name
+            FROM analysis_items
+            WHERE analysis_id = ?1
+            ORDER BY sort_order, id
+            "#,
+        )?;
+        let item_rows = stmt.query_map(params![analysis_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let item_rows = item_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let items = item_rows
+            .into_iter()
+            .map(|(item_id, item_type, name)| {
+                Ok(AnalysisItem {
+                    item_type: AnalysisItemType::from_db(&item_type),
+                    name,
+                    amounts: self.analysis_amounts(item_id)?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(SnapshotAnalysis {
+            snapshot_id: input.snapshot_id,
+            items,
+        })
+    }
+
+    pub fn save_snapshot_analysis(
+        &mut self,
+        input: SnapshotAnalysis,
+    ) -> Result<SnapshotAnalysis, AppError> {
+        self.ensure_snapshot_exists(input.snapshot_id)?;
+        validate_analysis_items(&input.items)?;
+
+        let transaction = self.conn.transaction()?;
+        transaction.execute(
+            "INSERT INTO snapshot_analysis (snapshot_id) VALUES (?1)
+             ON CONFLICT(snapshot_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP",
+            params![input.snapshot_id],
+        )?;
+        let analysis_id: i64 = transaction.query_row(
+            "SELECT id FROM snapshot_analysis WHERE snapshot_id = ?1",
+            params![input.snapshot_id],
+            |row| row.get(0),
+        )?;
+
+        transaction.execute(
+            "DELETE FROM analysis_items WHERE analysis_id = ?1",
+            params![analysis_id],
+        )?;
+
+        for (item_index, item) in input.items.iter().enumerate() {
+            transaction.execute(
+                "INSERT INTO analysis_items (analysis_id, type, name, sort_order) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    analysis_id,
+                    item.item_type.as_db(),
+                    item.name.trim(),
+                    item_index as i64 + 1,
+                ],
+            )?;
+            let item_id = transaction.last_insert_rowid();
+            for amount in &item.amounts {
+                transaction.execute(
+                    "INSERT INTO analysis_amounts (analysis_item_id, amount) VALUES (?1, ?2)",
+                    params![item_id, amount.trim()],
+                )?;
+            }
+        }
+
+        transaction.commit()?;
+        Ok(input)
+    }
+
     fn migrate(&self) -> Result<()> {
         self.conn.execute_batch(
             r#"
@@ -246,23 +499,60 @@ impl AppDatabase {
                 UNIQUE(snapshot_id, account_id)
             );
 
+            CREATE TABLE IF NOT EXISTS snapshot_analysis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_id INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(snapshot_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS analysis_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id INTEGER NOT NULL REFERENCES snapshot_analysis(id) ON DELETE CASCADE,
+                type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+                name TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS analysis_amounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_item_id INTEGER NOT NULL REFERENCES analysis_items(id) ON DELETE CASCADE,
+                amount TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_accounts_platform_id ON accounts(platform_id);
             CREATE INDEX IF NOT EXISTS idx_snapshots_date ON snapshots(date);
             CREATE INDEX IF NOT EXISTS idx_snapshot_items_snapshot_id ON snapshot_items(snapshot_id);
+            CREATE INDEX IF NOT EXISTS idx_analysis_items_analysis_id ON analysis_items(analysis_id);
+            CREATE INDEX IF NOT EXISTS idx_analysis_amounts_item_id ON analysis_amounts(analysis_item_id);
             "#,
         )?;
         Ok(())
     }
 
     fn seed_if_empty(&self) -> Result<()> {
-        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM platforms", [], |row| row.get(0))?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM platforms", [], |row| row.get(0))?;
         if count > 0 {
             return Ok(());
         }
 
-        self.conn.execute("INSERT INTO platforms (name, sort_order) VALUES (?1, ?2)", params!["支付宝", 1])?;
-        self.conn.execute("INSERT INTO platforms (name, sort_order) VALUES (?1, ?2)", params!["招商银行", 2])?;
-        self.conn.execute("INSERT INTO platforms (name, sort_order) VALUES (?1, ?2)", params!["微信", 3])?;
+        self.conn.execute(
+            "INSERT INTO platforms (name, sort_order) VALUES (?1, ?2)",
+            params!["支付宝", 1],
+        )?;
+        self.conn.execute(
+            "INSERT INTO platforms (name, sort_order) VALUES (?1, ?2)",
+            params!["招商银行", 2],
+        )?;
+        self.conn.execute(
+            "INSERT INTO platforms (name, sort_order) VALUES (?1, ?2)",
+            params!["微信", 3],
+        )?;
 
         self.conn.execute(
             "INSERT INTO accounts (platform_id, name, type, sort_order) VALUES (1, '余额', 'asset_liquid', 1)",
@@ -286,11 +576,23 @@ impl AppDatabase {
         )?;
 
         for (date, values) in [
-            ("2026-01-31", ["7200.00", "16800.00", "2600.00", "43100.00", "4400.00"]),
-            ("2026-02-28", ["8200.00", "17600.00", "3200.00", "44750.00", "5100.00"]),
-            ("2026-03-31", ["9400.00", "18100.00", "3400.00", "46230.00", "5550.00"]),
+            (
+                "2026-01-31",
+                ["7200.00", "16800.00", "2600.00", "43100.00", "4400.00"],
+            ),
+            (
+                "2026-02-28",
+                ["8200.00", "17600.00", "3200.00", "44750.00", "5100.00"],
+            ),
+            (
+                "2026-03-31",
+                ["9400.00", "18100.00", "3400.00", "46230.00", "5550.00"],
+            ),
         ] {
-            self.conn.execute("INSERT INTO snapshots (date, note) VALUES (?1, ?2)", params![date, "初始化示例"])?;
+            self.conn.execute(
+                "INSERT INTO snapshots (date, note) VALUES (?1, ?2)",
+                params![date, "初始化示例"],
+            )?;
             let snapshot_id = self.conn.last_insert_rowid();
             for (account_index, amount) in values.iter().enumerate() {
                 self.conn.execute(
@@ -314,12 +616,18 @@ impl AppDatabase {
                 sort_order: row.get(2)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     fn accounts(&self) -> Result<Vec<Account>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, platform_id, name, type, sort_order, is_active FROM accounts ORDER BY platform_id, sort_order, id",
+            r#"
+            SELECT a.id, a.platform_id, a.name, a.type, a.sort_order, a.is_active
+            FROM accounts a
+            JOIN platforms p ON p.id = a.platform_id
+            ORDER BY p.sort_order, p.id, a.sort_order, a.id
+            "#,
         )?;
         let rows = stmt.query_map([], |row| {
             let account_type: String = row.get(3)?;
@@ -333,14 +641,37 @@ impl AppDatabase {
                 is_active: is_active == 1,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    fn accounts_for_platform(&self, platform_id: i64) -> Result<Vec<Account>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, platform_id, name, type, sort_order, is_active FROM accounts WHERE platform_id = ?1 ORDER BY sort_order, id",
+        )?;
+        let rows = stmt.query_map(params![platform_id], |row| {
+            let account_type: String = row.get(3)?;
+            let is_active: i64 = row.get(5)?;
+            Ok(Account {
+                id: row.get(0)?,
+                platform_id: row.get(1)?,
+                name: row.get(2)?,
+                account_type: AccountType::from_db(&account_type),
+                sort_order: row.get(4)?,
+                is_active: is_active == 1,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     fn snapshot_summaries(&self) -> Result<Vec<SnapshotSummary>> {
         let mut stmt = self
             .conn
             .prepare("SELECT id, date FROM snapshots ORDER BY date ASC, id ASC")?;
-        let snapshot_rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
+        let snapshot_rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
         let snapshots = snapshot_rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
         snapshots
@@ -360,9 +691,9 @@ impl AppDatabase {
     }
 
     fn snapshots(&self) -> Result<Vec<Snapshot>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, date, note FROM snapshots ORDER BY date ASC, id ASC",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, date, note FROM snapshots ORDER BY date ASC, id ASC")?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -402,7 +733,8 @@ impl AppDatabase {
                 amount: row.get(1)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     fn snapshot_items_for_calc(&self, snapshot_id: i64) -> Result<Vec<SnapshotItemForCalc>> {
@@ -425,7 +757,42 @@ impl AppDatabase {
                 amount: row.get(3)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    fn ensure_snapshot_exists(&self, snapshot_id: i64) -> Result<(), AppError> {
+        let snapshot_count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM snapshots WHERE id = ?1",
+            params![snapshot_id],
+            |row| row.get(0),
+        )?;
+        if snapshot_count == 0 {
+            return Err(AppError::Validation("快照不存在".into()));
+        }
+        Ok(())
+    }
+
+    fn analysis_id_for_snapshot(&self, snapshot_id: i64) -> Result<Option<i64>> {
+        let result = self.conn.query_row(
+            "SELECT id FROM snapshot_analysis WHERE snapshot_id = ?1",
+            params![snapshot_id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(id) => Ok(Some(id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn analysis_amounts(&self, item_id: i64) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT amount FROM analysis_amounts WHERE analysis_item_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(params![item_id], |row| row.get(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 }
 
@@ -470,8 +837,56 @@ fn insert_snapshot_items(
     Ok(())
 }
 
+fn validate_analysis_items(items: &[AnalysisItem]) -> Result<(), AppError> {
+    for item in items {
+        if item.name.trim().is_empty() {
+            return Err(AppError::Validation("分析项目名称不能为空".into()));
+        }
+        if item.amounts.is_empty() {
+            return Err(AppError::Validation("分析项目至少需要一条金额".into()));
+        }
+        for amount in &item.amounts {
+            Decimal::from_str_exact(amount.trim())
+                .map_err(|_| AppError::Validation("分析金额格式不正确".into()))?;
+        }
+    }
+    Ok(())
+}
+
 fn default_database_path() -> Result<PathBuf> {
+    Ok(app_data_dir()?.join("asset-snapshot.db"))
+}
+
+fn configured_database_path() -> Result<Option<PathBuf>> {
+    let path = app_config_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let Ok(content) = fs::read_to_string(&path) else {
+        return Ok(None);
+    };
+    let Ok(config) = serde_json::from_str::<DataFileConfig>(&content) else {
+        return Ok(None);
+    };
+    let current_path = config.current_path.trim();
+    if current_path.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(PathBuf::from(current_path)))
+}
+
+fn app_config_path() -> Result<PathBuf> {
+    Ok(app_data_dir()?.join("data-file.json"))
+}
+
+fn app_data_dir() -> Result<PathBuf> {
     let dirs = ProjectDirs::from("com", "asset-snapshot", "asset-snapshot")
         .context("failed to resolve application data directory")?;
-    Ok(dirs.data_local_dir().join("asset-snapshot.db"))
+    Ok(dirs.data_local_dir().to_path_buf())
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct DataFileConfig {
+    current_path: String,
 }

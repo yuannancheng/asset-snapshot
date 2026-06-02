@@ -26,6 +26,14 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png"]
+    "icon": ["icons/icon.png"],
+    "fileAssociations": [
+      {
+        "ext": ["as"],
+        "name": "Asset Snapshot Data File",
+        "description": "资产快照数据文件",
+        "mimeType": "application/vnd.asset-snapshot.sqlite3"
+      }
+    ]
   }
 }

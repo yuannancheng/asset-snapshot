@@ -39,9 +39,26 @@ export type SnapshotSummary = {
   }>;
 };
 
+export type AnalysisItemType = "income" | "expense";
+
+export type AnalysisItem = {
+  type: AnalysisItemType;
+  name: string;
+  amounts: string[];
+};
+
+export type SnapshotAnalysis = {
+  snapshotId: number;
+  items: AnalysisItem[];
+};
+
 export type DashboardData = {
   platforms: Platform[];
   accounts: Account[];
   snapshots: Snapshot[];
   summaries: SnapshotSummary[];
+};
+
+export type DataFileInfo = {
+  currentPath: string;
 };

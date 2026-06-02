@@ -9,8 +9,8 @@ type ButtonProps = PropsWithChildren<
 
 export function Button({ className, variant = "primary", ...props }: ButtonProps) {
   const variants = {
-    primary: "bg-ink text-white hover:bg-moss active:bg-ink",
-    secondary: "border border-ink/10 bg-white text-ink hover:bg-mint active:bg-mint/80",
+    primary: "bg-ink text-app hover:bg-moss active:bg-ink",
+    secondary: "border border-ink/10 bg-panel text-ink hover:bg-mint active:bg-mint/80",
     ghost: "text-ink hover:bg-ink/5 active:bg-ink/10",
   };
 

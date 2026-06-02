@@ -3,11 +3,33 @@
 @tailwind utilities;
 
 :root {
-  color: #162018;
-  background: #f7f8f5;
+  --color-app: 247 248 245;
+  --color-panel: 255 255 255;
+  --color-subtle: 241 244 239;
+  --color-ink: 22 32 24;
+  --color-moss: 72 99 79;
+  --color-mint: 223 243 229;
+  --color-coral: 244 125 107;
+  --color-gold: 212 160 23;
+  --shadow-panel: 0 18px 50px rgba(22, 32, 24, 0.08);
+  color: rgb(var(--color-ink));
+  background: rgb(var(--color-app));
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --color-app: 13 17 15;
+  --color-panel: 24 30 27;
+  --color-subtle: 32 40 35;
+  --color-ink: 235 241 232;
+  --color-moss: 148 190 158;
+  --color-mint: 42 67 50;
+  --color-coral: 255 145 126;
+  --color-gold: 232 184 69;
+  --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.35);
 }
 
 body {

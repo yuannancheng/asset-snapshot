@@ -26,13 +26,13 @@ export function ChoiceSelect<T extends string>({
   return (
     <Listbox value={value} onChange={onChange}>
       <div className="relative">
-        <ListboxButton className="flex h-10 w-full items-center justify-between gap-3 rounded-md border border-ink/10 bg-white px-3 text-left text-sm text-ink outline-none transition hover:bg-mint/40 focus:border-moss focus:ring-2 focus:ring-moss/15">
+        <ListboxButton className="flex h-10 w-full items-center justify-between gap-3 rounded-md border border-ink/10 bg-panel px-3 text-left text-sm text-ink outline-none transition hover:bg-mint/40 focus:border-moss focus:ring-2 focus:ring-moss/15">
           <span className={selected ? "text-ink" : "text-ink/40"}>
             {selected?.label ?? placeholder}
           </span>
           <ChevronDown size={16} className="shrink-0 text-ink/45" />
         </ListboxButton>
-        <ListboxOptions className="absolute z-[70] mt-2 max-h-64 w-full overflow-auto rounded-lg border border-ink/10 bg-white p-1 shadow-panel outline-none">
+        <ListboxOptions className="absolute z-[70] mt-2 max-h-64 w-full overflow-auto rounded-lg border border-ink/10 bg-panel p-1 shadow-panel outline-none">
           {options.map((option) => (
             <ListboxOption
               key={option.value}

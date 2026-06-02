@@ -2,6 +2,7 @@ import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "../lib/utils";
+import { ChoiceSelect } from "./ChoiceSelect";
 
 type DatePickerProps = {
   value: string;
@@ -18,6 +19,22 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
     new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
   );
   const days = useMemo(() => calendarDays(visibleMonth), [visibleMonth]);
+  const yearChoices = useMemo(
+    () =>
+      yearOptions(visibleMonth.getFullYear()).map((year) => ({
+        value: String(year),
+        label: `${year} 年`,
+      })),
+    [visibleMonth],
+  );
+  const monthChoices = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => ({
+        value: String(index),
+        label: `${index + 1} 月`,
+      })),
+    [],
+  );
   const hasError = touched && !parseDate(inputValue);
 
   useEffect(() => {
@@ -45,7 +62,7 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
     <Popover className="relative">
       <div
         className={cn(
-          "flex h-10 w-full items-center rounded-md border bg-white text-sm text-ink transition focus-within:ring-2",
+          "flex h-10 w-full items-center rounded-md border bg-panel text-sm text-ink transition focus-within:ring-2",
           hasError
             ? "border-coral focus-within:ring-coral/20"
             : "border-ink/10 focus-within:border-moss focus-within:ring-moss/15",
@@ -73,7 +90,7 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
         </PopoverButton>
       </div>
       {hasError ? <p className="mt-1 text-xs text-coral">日期格式应为 YYYY-MM-DD</p> : null}
-      <PopoverPanel className="absolute z-[70] mt-2 w-72 rounded-lg border border-ink/10 bg-white p-3 shadow-panel">
+      <PopoverPanel className="absolute z-[70] mt-2 w-72 rounded-lg border border-ink/10 bg-panel p-3 shadow-panel">
         {({ close }) => (
           <>
             <div className="flex items-center justify-between">
@@ -97,32 +114,20 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <select
-                className="h-9 rounded-md border border-ink/10 bg-white px-2 text-sm text-ink outline-none focus:border-moss focus:ring-2 focus:ring-moss/15"
-                value={visibleMonth.getFullYear()}
-                onChange={(event) =>
-                  setVisibleMonth((current) => new Date(Number(event.target.value), current.getMonth(), 1))
+              <ChoiceSelect
+                value={String(visibleMonth.getFullYear())}
+                options={yearChoices}
+                onChange={(nextYear) =>
+                  setVisibleMonth((current) => new Date(Number(nextYear), current.getMonth(), 1))
                 }
-              >
-                {yearOptions(visibleMonth.getFullYear()).map((year) => (
-                  <option key={year} value={year}>
-                    {year} 年
-                  </option>
-                ))}
-              </select>
-              <select
-                className="h-9 rounded-md border border-ink/10 bg-white px-2 text-sm text-ink outline-none focus:border-moss focus:ring-2 focus:ring-moss/15"
-                value={visibleMonth.getMonth()}
-                onChange={(event) =>
-                  setVisibleMonth((current) => new Date(current.getFullYear(), Number(event.target.value), 1))
+              />
+              <ChoiceSelect
+                value={String(visibleMonth.getMonth())}
+                options={monthChoices}
+                onChange={(nextMonth) =>
+                  setVisibleMonth((current) => new Date(current.getFullYear(), Number(nextMonth), 1))
                 }
-              >
-                {Array.from({ length: 12 }, (_, index) => (
-                  <option key={index} value={index}>
-                    {index + 1} 月
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs text-ink/45">
@@ -144,7 +149,7 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
                     className={cn(
                       "flex aspect-square items-center justify-center rounded-md text-sm transition",
                       isCurrentMonth ? "text-ink" : "text-ink/30",
-                      isSelected ? "bg-ink font-semibold text-white" : "hover:bg-mint",
+                      isSelected ? "bg-ink font-semibold text-app" : "hover:bg-mint",
                     )}
                     onClick={() => {
                       commitDate(dateValue);
