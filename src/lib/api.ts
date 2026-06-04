@@ -3,6 +3,7 @@ import type {
   AccountType,
   DashboardData,
   DataFileInfo,
+  DatabaseStatus,
   Platform,
   Snapshot,
   SnapshotAnalysis,
@@ -133,7 +134,31 @@ export async function getDataFileInfo() {
   }
 }
 
-export async function switchDataFile(input: { path: string }) {
+export async function getDatabaseStatus() {
+  try {
+    return await invokeCommand<DatabaseStatus>("get_database_status");
+  } catch {
+    return { currentPath: "", encrypted: false, locked: false, failedAttempts: 0, waitSeconds: 0 };
+  }
+}
+
+export async function setDatabasePassword(input: { password: string }) {
+  return invokeCommand<DatabaseStatus>("set_database_password", { input });
+}
+
+export async function unlockDatabase(input: { password: string }) {
+  return invokeCommand<DashboardData>("unlock_database", { input });
+}
+
+export async function changeDatabasePassword(input: { newPassword: string }) {
+  return invokeCommand<void>("change_database_password", { input });
+}
+
+export async function lockDatabase() {
+  return invokeCommand<DatabaseStatus>("lock_database");
+}
+
+export async function switchDataFile(input: { path: string; password?: string }) {
   return invokeCommand<DashboardData>("switch_data_file", { input });
 }
 

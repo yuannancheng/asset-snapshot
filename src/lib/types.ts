@@ -62,3 +62,23 @@ export type DashboardData = {
 export type DataFileInfo = {
   currentPath: string;
 };
+
+export type DatabaseStatus = {
+  currentPath: string;
+  encrypted: boolean;
+  locked: boolean;
+  failedAttempts: number;
+  waitSeconds: number;
+};
+
+export type SetPasswordInput = {
+  password: string;
+};
+
+export type UnlockInput = {
+  password: string;
+};
+
+export type ChangePasswordInput = {
+  newPassword: string;
+};

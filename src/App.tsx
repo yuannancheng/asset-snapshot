@@ -21,6 +21,8 @@ import {
   FilePlus2,
   FolderOpen,
   History,
+  KeyRound,
+  Lock,
   Moon,
   PauseCircle,
   Pencil,
@@ -29,6 +31,7 @@ import {
   Sparkles,
   Sun,
   Trash2,
+  Unlock,
   WalletCards,
   X,
 } from "lucide-react";
@@ -37,10 +40,14 @@ import { ChoiceSelect } from "./components/ChoiceSelect";
 import { DatePicker } from "./components/DatePicker";
 import { Input, Label } from "./components/Field";
 import { Modal } from "./components/Modal";
+import { PasswordChangeModal } from "./components/PasswordChangeModal";
+import { PasswordSetupModal } from "./components/PasswordSetupModal";
 import { Stat } from "./components/Stat";
 import { TimeRangeTabs, type TimeRangeKey } from "./components/TimeRangeTabs";
+import { UnlockScreen } from "./components/UnlockScreen";
 import {
   backupDataFile,
+  changeDatabasePassword,
   createAccount,
   createPlatform,
   createSnapshot,
@@ -49,11 +56,15 @@ import {
   deleteSnapshot,
   getDashboardData,
   getDataFileInfo,
+  getDatabaseStatus,
   getSnapshotAnalysis,
+  lockDatabase,
   moveAccount,
   movePlatform,
   saveSnapshotAnalysis,
+  setDatabasePassword,
   switchDataFile,
+  unlockDatabase,
   updateAccount,
   updateAccountActive,
   updatePlatform,
@@ -66,6 +77,7 @@ import type {
   AnalysisItem,
   DashboardData,
   DataFileInfo,
+  DatabaseStatus,
   SnapshotSummary,
 } from "./lib/types";
 
@@ -98,6 +110,11 @@ export default function App() {
   const [snapshotOpen, setSnapshotOpen] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [dataFileInfo, setDataFileInfo] = useState<DataFileInfo | null>(null);
+  const [databaseStatus, setDatabaseStatus] = useState<DatabaseStatus | null>(null);
+  const [locked, setLocked] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [passwordSetupOpen, setPasswordSetupOpen] = useState(false);
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
   const [editingSnapshotId, setEditingSnapshotId] = useState<number | null>(null);
   const [analysisSnapshotId, setAnalysisSnapshotId] = useState<number | null>(null);
   const [analysisItems, setAnalysisItems] = useState<AnalysisItem[]>([]);
@@ -120,7 +137,10 @@ export default function App() {
   });
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [unlockWaitSeconds, setUnlockWaitSeconds] = useState(0);
   const [timeRange, setTimeRange] = useState<TimeRangeKey>("3m");
   const [customRange, setCustomRange] = useState({
     start: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString().slice(0, 10),
@@ -145,7 +165,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadData().catch((reason) => setError(String(reason)));
+    getDatabaseStatus()
+      .then((status) => {
+        setDatabaseStatus(status);
+        if (status.locked) {
+          setLocked(true);
+        } else {
+          loadData().catch((reason) => setError(String(reason)));
+        }
+      })
+      .catch(() => {
+        loadData().catch((reason) => setError(String(reason)));
+      });
   }, [loadData]);
 
   useEffect(() => {
@@ -154,16 +185,39 @@ export default function App() {
   }, [darkMode]);
 
   useEffect(() => {
+    if (unlockWaitSeconds <= 0) return;
+    const timer = setTimeout(() => {
+      setUnlockWaitSeconds((current) => current - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [unlockWaitSeconds]);
+
+  useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
 
     let disposed = false;
     let unlistenDataFile: (() => void) | undefined;
     let unlistenDataFileError: (() => void) | undefined;
+    let unlistenDataFileEncrypted: (() => void) | undefined;
 
     import("@tauri-apps/api/event")
       .then(async ({ listen }) => {
         const dataFileUnlisten = await listen<DataFileInfo>("data-file-switched", async (event) => {
           setDataFileInfo(event.payload);
+          setUnlockError(null);
+          // Check the new file's encryption/lock status instead of assuming unlocked
+          try {
+            const status = await getDatabaseStatus();
+            setDatabaseStatus(status);
+            if (status.locked) {
+              setLocked(true);
+              setUnlockWaitSeconds(0);
+              return;
+            }
+          } catch {
+            // Fall through and load data if status check fails
+          }
+          setLocked(false);
           await loadData();
           setError(null);
           setMessage("已通过文件打开切换数据文件");
@@ -171,14 +225,23 @@ export default function App() {
         const errorUnlisten = await listen<string>("data-file-open-error", (event) => {
           setError(event.payload);
         });
+        const encryptedUnlisten = await listen<string>("data-file-encrypted", async () => {
+          const status = await getDatabaseStatus();
+          setDatabaseStatus(status);
+          setLocked(true);
+          setUnlockError(null);
+          setUnlockWaitSeconds(0);
+        });
 
         if (disposed) {
           dataFileUnlisten();
           errorUnlisten();
+          encryptedUnlisten();
           return;
         }
         unlistenDataFile = dataFileUnlisten;
         unlistenDataFileError = errorUnlisten;
+        unlistenDataFileEncrypted = encryptedUnlisten;
       })
       .catch((reason) => setError(String(reason)));
 
@@ -186,8 +249,85 @@ export default function App() {
       disposed = true;
       unlistenDataFile?.();
       unlistenDataFileError?.();
+      unlistenDataFileEncrypted?.();
     };
   }, [loadData]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 2000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const handleUnlock = async (password: string) => {
+    setUnlockError(null);
+    setUnlockWaitSeconds(0);
+    try {
+      const nextData = await unlockDatabase({ password });
+      setData(nextData);
+      setLocked(false);
+      setUnlockError(null);
+      setUnlockWaitSeconds(0);
+      const status = await getDatabaseStatus();
+      setDatabaseStatus(status);
+    } catch (err) {
+      const message = String(err);
+      setUnlockError(message);
+      // Parse wait seconds from error message (backend returns "... X seconds ...")
+      const waitMatch = message.match(/(\d+)\s*seconds/);
+      if (waitMatch) {
+        setUnlockWaitSeconds(Number(waitMatch[1]));
+      }
+      // Refresh status to get updated failed attempts / wait info
+      try {
+        const status = await getDatabaseStatus();
+        setDatabaseStatus(status);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const handleSetPassword = async (password: string) => {
+    setError(null);
+    setPasswordLoading(true);
+    try {
+      const status = await setDatabasePassword({ password });
+      setDatabaseStatus(status);
+      setPasswordSetupOpen(false);
+      setMessage("数据库密码已设置。请务必记住您的密码。");
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (newPassword: string) => {
+    setError(null);
+    setPasswordLoading(true);
+    try {
+      await changeDatabasePassword({ newPassword });
+      setPasswordChangeOpen(false);
+      setMessage("数据库密码已修改。");
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  const handleLock = async () => {
+    setError(null);
+    try {
+      const status = await lockDatabase();
+      setDatabaseStatus(status);
+      setLocked(true);
+      setUnlockError(null);
+    } catch (err) {
+      setError(String(err));
+    }
+  };
 
   const activeAccounts = useMemo(
     () => data.accounts.filter((account) => account.isActive),
@@ -533,11 +673,37 @@ export default function App() {
         filters: dataFileFilters,
       });
       if (typeof selected !== "string") return;
+      // Skip if the same file is already open (locked or unlocked)
+      if (selected === databaseStatus?.currentPath) {
+        setDataFileOpen(false);
+        setMessage("当前已在使用此数据文件");
+        return;
+      }
       const nextData = await switchDataFile({ path: selected });
       setData(nextData);
       setDataFileInfo(await getDataFileInfo());
+      setDataFileOpen(false);
+      const status = await getDatabaseStatus();
+      setDatabaseStatus(status);
+      setLocked(status.locked);
+      setUnlockError(null);
       setMessage("已切换数据文件");
     } catch (reason) {
+      // Check backend state to decide whether the target file is encrypted/locked
+      try {
+        const status = await getDatabaseStatus();
+        setDatabaseStatus(status);
+        if (status.locked) {
+          setLocked(true);
+          setUnlockError(null);
+          setUnlockWaitSeconds(0);
+          setDataFileOpen(false);
+          setError(null);
+          return;
+        }
+      } catch {
+        // Fall through to showing the error
+      }
       setError(String(reason));
     } finally {
       setSaving(false);
@@ -558,8 +724,27 @@ export default function App() {
       const nextData = await switchDataFile({ path: selected });
       setData(nextData);
       setDataFileInfo(await getDataFileInfo());
+      setDataFileOpen(false);
+      const status = await getDatabaseStatus();
+      setDatabaseStatus(status);
+      setLocked(status.locked);
+      setUnlockError(null);
       setMessage("已创建并切换数据文件");
     } catch (reason) {
+      try {
+        const status = await getDatabaseStatus();
+        setDatabaseStatus(status);
+        if (status.locked) {
+          setLocked(true);
+          setUnlockError(null);
+          setUnlockWaitSeconds(0);
+          setDataFileOpen(false);
+          setError(null);
+          return;
+        }
+      } catch {
+        // Fall through to showing the error
+      }
       setError(String(reason));
     } finally {
       setSaving(false);
@@ -657,6 +842,17 @@ export default function App() {
       ? buildAnalysisDescription(analysisItems, analysisChange)
       : "需要至少两次快照才能生成变动说明。";
 
+  if (locked) {
+    return (
+      <UnlockScreen
+        currentPath={databaseStatus?.currentPath ?? ""}
+        onUnlock={handleUnlock}
+        error={unlockError}
+        waitSeconds={unlockWaitSeconds}
+      />
+    );
+  }
+
   return (
     <main className="min-h-screen bg-app">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-6 sm:px-8 lg:px-10">
@@ -685,6 +881,60 @@ export default function App() {
             </Button>
           </div>
         </header>
+
+        <div className="flex items-center gap-x-4 rounded-md border border-ink/10 bg-subtle px-4 py-2 text-xs">
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-ink/50">
+            <Database size={14} />
+            数据文件:
+          </span>
+          <span
+            className="inline-flex min-w-0 cursor-pointer font-mono text-ink/70 transition-colors hover:text-ink"
+            title={`点击复制: ${databaseStatus?.currentPath ?? ""}`}
+            onClick={() => {
+              const path = databaseStatus?.currentPath ?? "";
+              if (!path) return;
+              navigator.clipboard.writeText(path).then(
+                () => {
+                  setMessage(null);
+                  setError(null);
+                  setToast({ text: "已复制文件路径", kind: "success" });
+                },
+                () => setToast({ text: "复制失败", kind: "error" }),
+              );
+            }}
+          >
+            {(() => {
+              const path = databaseStatus?.currentPath ?? "";
+              const lastSep = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+              const dir = lastSep >= 0 ? path.slice(0, lastSep + 1) : "";
+              const file = lastSep >= 0 ? path.slice(lastSep + 1) : path;
+              return (
+                <>
+                  <span className="min-w-0 truncate">{dir}</span>
+                  <span className="shrink-0">{file}</span>
+                </>
+              );
+            })()}
+          </span>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+              databaseStatus?.encrypted
+                ? "bg-mint/60 text-moss"
+                : "bg-ink/5 text-ink/45"
+            }`}
+          >
+            {databaseStatus?.encrypted ? "已加密" : "未加密"}
+          </span>
+          {databaseStatus?.encrypted ? (
+            <button
+              type="button"
+              className="shrink-0 rounded px-1.5 py-0.5 text-ink/50 transition-colors hover:bg-ink/10 hover:text-ink"
+              onClick={handleLock}
+            >
+              <Lock size={14} className="inline-block" /> 锁定
+            </button>
+          ) : null}
+        </div>
 
         <section className="grid gap-4 md:grid-cols-3">
           <Stat
@@ -965,6 +1215,47 @@ export default function App() {
             <p className="mt-2 break-all font-mono text-xs leading-5 text-ink/65">
               {dataFileInfo?.currentPath ?? "正在读取..."}
             </p>
+            <p className="mt-2 text-sm text-ink/65">
+              加密状态:{" "}
+              <span className={databaseStatus?.encrypted ? "font-medium text-moss" : "text-ink/50"}>
+                {databaseStatus?.encrypted ? "已加密" : "未加密"}
+              </span>
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {databaseStatus?.encrypted ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setPasswordChangeOpen(true);
+                    setError(null);
+                  }}
+                  disabled={saving}
+                >
+                  <KeyRound size={18} />
+                  修改密码
+                </Button>
+                <Button type="button" variant="secondary" onClick={handleLock} disabled={saving}>
+                  <Lock size={18} />
+                  锁定
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setPasswordSetupOpen(true);
+                  setError(null);
+                }}
+                disabled={saving}
+              >
+                <Unlock size={18} />
+                设置密码
+              </Button>
+            )}
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <Button type="button" variant="secondary" onClick={chooseDataFile} disabled={saving}>
@@ -1438,6 +1729,34 @@ export default function App() {
           <Feedback message={message} error={error} />
         </div>
       </Modal>
+
+      <PasswordSetupModal
+        open={passwordSetupOpen}
+        onClose={() => setPasswordSetupOpen(false)}
+        onSetPassword={handleSetPassword}
+        saving={passwordLoading}
+        error={error}
+      />
+
+      <PasswordChangeModal
+        open={passwordChangeOpen}
+        onClose={() => setPasswordChangeOpen(false)}
+        onChangePassword={handleChangePassword}
+        saving={passwordLoading}
+        error={error}
+      />
+
+      {toast ? (
+        <div
+          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2.5 text-sm font-medium shadow-lg transition-all duration-300 ${
+            toast.kind === "success"
+              ? "bg-moss text-white"
+              : "bg-coral text-white"
+          }`}
+        >
+          {toast.text}
+        </div>
+      ) : null}
     </main>
   );
 }

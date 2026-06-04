@@ -19,21 +19,66 @@ use std::path::{Path, PathBuf};
 pub struct AppDatabase {
     conn: Connection,
     path: PathBuf,
+    encrypted: bool,
 }
 
 impl AppDatabase {
+    #[allow(dead_code)]
     pub fn open_default() -> Result<Self> {
         let path = configured_database_path()?.unwrap_or(default_database_path()?);
-        Self::open_path(path)
+        let encrypted = configured_database_encrypted()?;
+        if encrypted {
+            return Err(anyhow::anyhow!("encrypted database requires password"));
+        }
+        Self::open_path(path, None)
     }
 
-    pub fn open_path(path: PathBuf) -> Result<Self> {
+    pub fn open_path(path: PathBuf, password: Option<&str>) -> Result<Self> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).context("failed to create application data directory")?;
         }
 
+        let file_already_existed = path.exists();
+
         let conn = Connection::open(&path).context("failed to open sqlite database")?;
-        let db = Self { conn, path };
+
+        if let Some(pwd) = password {
+            conn.execute_batch(&pragma_key_sql(pwd))
+                .context("failed to set database key")?;
+            conn.execute_batch("PRAGMA cipher_compatibility = 4;")
+                .context("failed to set cipher compatibility")?;
+        }
+
+        // Verify database is readable by checking sqlite_master.
+        // For encrypted databases opened without a key, this will fail.
+        let verify_result = conn.query_row(
+            "SELECT count(*) FROM sqlite_master",
+            [],
+            |row| row.get::<_, i64>(0),
+        );
+
+        match verify_result {
+            Ok(_) => {}
+            Err(rusqlite::Error::SqliteFailure(err, _))
+                if err.code == rusqlite::ErrorCode::NotADatabase =>
+            {
+                if password.is_some() {
+                    return Err(anyhow::anyhow!("authentication failed"));
+                }
+                return Err(anyhow::anyhow!("authentication required"));
+            }
+            Err(e) => {
+                if !file_already_existed && password.is_none() {
+                    // File didn't exist before open — it was just created.
+                    // This is a blank new file; proceed with migration.
+                } else {
+                    return Err(e.into());
+                }
+            }
+        }
+
+        let encrypted = password.is_some();
+        let db = Self { conn, path, encrypted };
         db.migrate()?;
         db.seed_if_empty()?;
         Ok(db)
@@ -41,6 +86,132 @@ impl AppDatabase {
 
     pub fn current_path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn is_encrypted(&self) -> bool {
+        self.encrypted
+    }
+
+    pub fn set_password(&mut self, password: &str) -> Result<(), AppError> {
+        if password.len() < crate::models::MIN_PASSWORD_LENGTH {
+            return Err(AppError::InvalidPassword(
+                crate::models::MIN_PASSWORD_LENGTH,
+            ));
+        }
+        if self.encrypted {
+            return Err(AppError::Validation("数据库已加密，请使用修改密码功能".into()));
+        }
+
+        // Use sqlcipher_export to create an encrypted copy of the plaintext database.
+        // PRAGMA rekey only works on already-encrypted databases; for first-time
+        // encryption we must export to a new file and then replace the original.
+        let esc_pwd = escape_sql_password(password);
+        let tmp_path = self
+            .path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(".asset-snapshot-encrypting-tmp");
+
+        // Remove stale tmp file if it exists
+        let _ = std::fs::remove_file(&tmp_path);
+
+        self.conn
+            .execute_batch("PRAGMA cipher_compatibility = 4;")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.conn
+            .execute_batch(&format!(
+                "ATTACH DATABASE '{}' AS encrypted KEY '{}';",
+                tmp_path.to_string_lossy().replace('\'', "''"),
+                esc_pwd
+            ))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.conn
+            .execute_batch("SELECT sqlcipher_export('encrypted');")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.conn
+            .execute_batch("DETACH DATABASE encrypted;")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Rename the encrypted tmp file over the original.
+        // On Linux the old inode stays alive until the last fd is closed,
+        // so the current connection (pointing to the old inode) remains valid.
+        std::fs::rename(&tmp_path, &self.path).map_err(|e| {
+            // Clean up tmp file on failure
+            let _ = std::fs::remove_file(&tmp_path);
+            AppError::Database(format!("无法替换数据库文件: {e}"))
+        })?;
+
+        // Close the old plaintext connection and open the new encrypted file
+        self.conn = Connection::open(&self.path)
+            .map_err(|e| AppError::Database(format!("无法重新打开数据库: {e}")))?;
+        self.conn
+            .execute_batch(&pragma_key_sql(password))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.conn
+            .execute_batch("PRAGMA cipher_compatibility = 4;")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Verify the file is encrypted by checking its header.
+        // A SQLCipher-encrypted file must NOT start with the plaintext SQLite magic.
+        match std::fs::read(&self.path) {
+            Ok(header) if header.len() >= 16 && &header[0..16] == b"SQLite format 3\0" => {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(AppError::Database(
+                    "数据库加密未生效：文件头仍为明文 SQLite 格式。请确认 SQLCipher 已正确编译。".into(),
+                ));
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(AppError::Database(format!("无法读取数据库文件以验证加密: {e}")));
+            }
+            _ => {} // Header is not plaintext — encryption succeeded
+        }
+
+        // Verify the database is readable with the new key
+        self.conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|e| {
+                AppError::Database(format!("加密后数据库验证失败: {e}"))
+            })?;
+
+        self.encrypted = true;
+        self.remember_current_path()?;
+        Ok(())
+    }
+
+    pub fn change_password(&self, new_password: &str) -> Result<(), AppError> {
+        if new_password.len() < crate::models::MIN_PASSWORD_LENGTH {
+            return Err(AppError::InvalidPassword(
+                crate::models::MIN_PASSWORD_LENGTH,
+            ));
+        }
+        if !self.encrypted {
+            return Err(AppError::Validation("数据库未加密".into()));
+        }
+        self.conn
+            .execute_batch(&format!(
+                "PRAGMA rekey = '{}'",
+                escape_sql_password(new_password)
+            ))
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn remove_password(&mut self) -> Result<(), AppError> {
+        if !self.encrypted {
+            return Err(AppError::Validation("数据库未加密".into()));
+        }
+        self.conn
+            .execute_batch("PRAGMA rekey = ''")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.encrypted = false;
+        self.remember_current_path()?;
+        Ok(())
     }
 
     pub fn remember_current_path(&self) -> Result<(), AppError> {
@@ -52,6 +223,7 @@ impl AppDatabase {
         }
         let config = DataFileConfig {
             current_path: self.path.to_string_lossy().into_owned(),
+            encrypted: self.encrypted,
         };
         let content = serde_json::to_string_pretty(&config)
             .context("failed to serialize data file config")?;
@@ -853,20 +1025,15 @@ fn validate_analysis_items(items: &[AnalysisItem]) -> Result<(), AppError> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn default_database_path() -> Result<PathBuf> {
     Ok(app_data_dir()?.join("asset-snapshot.db"))
 }
 
+#[allow(dead_code)]
 fn configured_database_path() -> Result<Option<PathBuf>> {
-    let path = app_config_path()?;
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let Ok(content) = fs::read_to_string(&path) else {
-        return Ok(None);
-    };
-    let Ok(config) = serde_json::from_str::<DataFileConfig>(&content) else {
+    let config = read_config_file()?;
+    let Some(config) = config else {
         return Ok(None);
     };
     let current_path = config.current_path.trim();
@@ -874,6 +1041,29 @@ fn configured_database_path() -> Result<Option<PathBuf>> {
         return Ok(None);
     }
     Ok(Some(PathBuf::from(current_path)))
+}
+
+fn configured_database_encrypted() -> Result<bool> {
+    let config = read_config_file()?;
+    Ok(config.map(|c| c.encrypted).unwrap_or(false))
+}
+
+pub fn read_config_encrypted() -> Result<bool> {
+    configured_database_encrypted()
+}
+
+fn read_config_file() -> Result<Option<DataFileConfig>> {
+    let path = app_config_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let Ok(content) = fs::read_to_string(&path) else {
+        return Ok(None);
+    };
+    let Ok(config) = serde_json::from_str::<DataFileConfig>(&content) else {
+        return Ok(None);
+    };
+    Ok(Some(config))
 }
 
 fn app_config_path() -> Result<PathBuf> {
@@ -889,4 +1079,14 @@ fn app_data_dir() -> Result<PathBuf> {
 #[derive(Debug, Deserialize, Serialize)]
 struct DataFileConfig {
     current_path: String,
+    #[serde(default)]
+    encrypted: bool,
+}
+
+fn escape_sql_password(password: &str) -> String {
+    password.replace('\'', "''")
+}
+
+fn pragma_key_sql(password: &str) -> String {
+    format!("PRAGMA key = '{}'", escape_sql_password(password))
 }

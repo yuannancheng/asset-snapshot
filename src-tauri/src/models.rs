@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub const MIN_PASSWORD_LENGTH: usize = 4;
+
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("database error: {0}")]
@@ -9,6 +11,14 @@ pub enum AppError {
     Validation(String),
     #[error("application state is locked")]
     StateLocked,
+    #[error("authentication required")]
+    AuthenticationRequired,
+    #[error("password must be at least {0} characters")]
+    InvalidPassword(usize),
+    #[error("please wait {0} seconds before retrying")]
+    WaitRequired(u32),
+    #[error("authentication failed, wait {0} seconds")]
+    AuthenticationFailedWait(u32),
 }
 
 impl serde::Serialize for AppError {
@@ -284,10 +294,40 @@ pub struct GetSnapshotAnalysisInput {
 #[serde(rename_all = "camelCase")]
 pub struct SwitchDataFileInput {
     pub path: String,
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupDataFileInput {
     pub path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPasswordInput {
+    pub password: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlockInput {
+    pub password: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordInput {
+    pub new_password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseStatus {
+    pub current_path: String,
+    pub encrypted: bool,
+    pub locked: bool,
+    pub failed_attempts: u32,
+    pub wait_seconds: u32,
 }
