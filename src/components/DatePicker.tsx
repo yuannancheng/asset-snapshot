@@ -1,6 +1,7 @@
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { formatDate, parseDate } from "../lib/date";
 import { cn } from "../lib/utils";
 import { ChoiceSelect } from "./ChoiceSelect";
 
@@ -178,30 +179,6 @@ function calendarDays(month: Date) {
     date.setDate(start.getDate() + index);
     return date;
   });
-}
-
-function parseDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
-  }
-  return date;
-}
-
-function formatDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function yearOptions(centerYear: number) {

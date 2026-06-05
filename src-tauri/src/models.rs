@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const MIN_PASSWORD_LENGTH: usize = 4;
+pub const MIN_PASSWORD_LENGTH: usize = 6;
 
 #[derive(Debug, Error)]
 pub enum AppError {

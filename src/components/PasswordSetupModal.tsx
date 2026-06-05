@@ -11,7 +11,7 @@ type PasswordSetupModalProps = {
   error: string | null;
 };
 
-const MIN_LENGTH = 4;
+const MIN_LENGTH = 6;
 
 export function PasswordSetupModal({
   open,

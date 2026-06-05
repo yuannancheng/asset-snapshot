@@ -1090,3 +1090,252 @@ fn escape_sql_password(password: &str) -> String {
 fn pragma_key_sql(password: &str) -> String {
     format!("PRAGMA key = '{}'", escape_sql_password(password))
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(unused_mut)]
+    use super::*;
+    use crate::models::CreateSnapshotItemInput;
+    use rusqlite::Connection;
+
+
+    fn test_db() -> AppDatabase {
+        let conn = Connection::open_in_memory().unwrap();
+        let db = AppDatabase {
+            conn,
+            path: PathBuf::from(":memory:"),
+            encrypted: false,
+        };
+        db.migrate().unwrap();
+        db
+    }
+
+    #[test]
+    fn migration_creates_tables() {
+        let mut db = test_db();
+        let count: i64 = db
+            .conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='platforms'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn create_and_list_platforms() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "支付宝".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "招商银行".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        assert_eq!(platforms.len(), 2);
+        assert_eq!(platforms[0].name, "支付宝");
+        assert_eq!(platforms[1].name, "招商银行");
+    }
+
+    #[test]
+    fn update_platform_name() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "支付宝".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.update_platform(UpdatePlatformInput { platform_id: platforms[0].id, name: "蚂蚁财富".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        assert_eq!(platforms[0].name, "蚂蚁财富");
+    }
+
+    #[test]
+    fn move_platform_sort_order() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "A".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "B".into() }).unwrap();
+        let platform_b_id = {
+            let platforms = db.platforms().unwrap();
+            assert_eq!(platforms[0].name, "A");
+            assert_eq!(platforms[1].name, "B");
+            platforms[1].id
+        };
+        db.move_platform(MovePlatformInput { platform_id: platform_b_id, direction: MoveDirection::Up }).unwrap();
+        let platforms = db.platforms().unwrap();
+        assert_eq!(platforms[0].name, "B");
+        assert_eq!(platforms[1].name, "A");
+    }
+
+    #[test]
+    fn create_account_with_type() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "理财".into(), account_type: AccountType::AssetNonliquid }).unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "花呗".into(), account_type: AccountType::Debt }).unwrap();
+        let accounts = db.accounts().unwrap();
+        assert_eq!(accounts.len(), 3);
+        assert_eq!(accounts[0].account_type, AccountType::AssetLiquid);
+        assert_eq!(accounts[1].account_type, AccountType::AssetNonliquid);
+        assert_eq!(accounts[2].account_type, AccountType::Debt);
+    }
+
+    #[test]
+    fn deactivate_account_excludes_from_active() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        let accounts = db.accounts().unwrap();
+        assert!(accounts[0].is_active);
+        db.update_account_active(UpdateAccountActiveInput { account_id: accounts[0].id, is_active: false }).unwrap();
+        let accounts = db.accounts().unwrap();
+        assert!(!accounts[0].is_active);
+    }
+
+    #[test]
+    fn create_snapshot_and_recalculate() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "花呗".into(), account_type: AccountType::Debt }).unwrap();
+        let accounts = db.accounts().unwrap();
+        db.create_snapshot(CreateSnapshotInput {
+            date: "2026-06-01".into(),
+            note: Some("测试快照".into()),
+            items: vec![
+                CreateSnapshotItemInput { account_id: accounts[0].id, amount: "10000.00".into() },
+                CreateSnapshotItemInput { account_id: accounts[1].id, amount: "2000.00".into() },
+            ],
+        }).unwrap();
+        let summaries = db.snapshot_summaries().unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].total_asset, "8000.00");
+        assert_eq!(summaries[0].available_asset, "10000.00");
+    }
+
+    #[test]
+    fn delete_snapshot_removes_items() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        let accounts = db.accounts().unwrap();
+        db.create_snapshot(CreateSnapshotInput {
+            date: "2026-06-01".into(), note: None,
+            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
+        }).unwrap();
+        let snapshots = db.snapshots().unwrap();
+        db.delete_snapshot(DeleteSnapshotInput { snapshot_id: snapshots[0].id }).unwrap();
+        let snapshots = db.snapshots().unwrap();
+        assert!(snapshots.is_empty());
+        let item_count: i64 = db.conn.query_row("SELECT count(*) FROM snapshot_items", [], |row| row.get(0)).unwrap();
+        assert_eq!(item_count, 0);
+    }
+
+    #[test]
+    fn update_snapshot_changes_items() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        let accounts = db.accounts().unwrap();
+        db.create_snapshot(CreateSnapshotInput {
+            date: "2026-06-01".into(), note: None,
+            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
+        }).unwrap();
+        let snapshots = db.snapshots().unwrap();
+        db.update_snapshot(UpdateSnapshotInput {
+            snapshot_id: snapshots[0].id,
+            date: "2026-06-15".into(),
+            note: Some("更新".into()),
+            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "8000.00".into() }],
+        }).unwrap();
+        let snapshots = db.snapshots().unwrap();
+        assert_eq!(snapshots[0].date, "2026-06-15");
+        assert_eq!(snapshots[0].note.as_deref(), Some("更新"));
+        assert_eq!(snapshots[0].items[0].amount, "8000.00");
+    }
+
+    #[test]
+    fn snapshot_analysis_save_and_load() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        let accounts = db.accounts().unwrap();
+        db.create_snapshot(CreateSnapshotInput {
+            date: "2026-06-01".into(), note: None,
+            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "10000.00".into() }],
+        }).unwrap();
+        let snapshots = db.snapshots().unwrap();
+        db.save_snapshot_analysis(SnapshotAnalysis {
+            snapshot_id: snapshots[0].id,
+            items: vec![AnalysisItem { item_type: AnalysisItemType::Income, name: "工资".into(), amounts: vec!["5000.00".into()] }],
+        }).unwrap();
+        let analysis = db.snapshot_analysis(GetSnapshotAnalysisInput { snapshot_id: snapshots[0].id }).unwrap();
+        assert_eq!(analysis.items.len(), 1);
+        assert_eq!(analysis.items[0].name, "工资");
+        assert_eq!(analysis.items[0].amounts, vec!["5000.00"]);
+    }
+
+    #[test]
+    fn validate_snapshot_date_rejects_empty() {
+        assert!(validate_snapshot_date("").is_err());
+        assert!(validate_snapshot_date("   ").is_err());
+    }
+
+    #[test]
+    fn validate_snapshot_date_rejects_bad_format() {
+        assert!(validate_snapshot_date("2026/06/01").is_err());
+        assert!(validate_snapshot_date("2026-13-01").is_err());
+        assert!(validate_snapshot_date("not-a-date").is_err());
+    }
+
+    #[test]
+    fn validate_snapshot_date_accepts_valid() {
+        assert!(validate_snapshot_date("2026-06-01").is_ok());
+        assert!(validate_snapshot_date("2026-12-31").is_ok());
+        assert!(validate_snapshot_date("2024-02-29").is_ok());
+    }
+
+    #[test]
+    fn validate_snapshot_items_rejects_empty() {
+        assert!(validate_snapshot_items(&[]).is_err());
+    }
+
+    #[test]
+    fn validate_snapshot_items_rejects_bad_amount() {
+        assert!(validate_snapshot_items(&[CreateSnapshotItemInput { account_id: 1, amount: "abc".into() }]).is_err());
+    }
+
+    #[test]
+    fn validate_snapshot_items_accepts_valid() {
+        assert!(validate_snapshot_items(&[CreateSnapshotItemInput { account_id: 1, amount: "5000.00".into() }]).is_ok());
+    }
+
+    #[test]
+    fn delete_account_without_history_succeeds() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        let accounts = db.accounts().unwrap();
+        db.delete_account(DeleteAccountInput { account_id: accounts[0].id }).unwrap();
+        let accounts = db.accounts().unwrap();
+        assert!(accounts.is_empty());
+    }
+
+    #[test]
+    fn delete_account_with_history_rejected() {
+        let mut db = test_db();
+        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        let platforms = db.platforms().unwrap();
+        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        let accounts = db.accounts().unwrap();
+        db.create_snapshot(CreateSnapshotInput {
+            date: "2026-06-01".into(), note: None,
+            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
+        }).unwrap();
+        let result = db.delete_account(DeleteAccountInput { account_id: accounts[0].id });
+        assert!(result.is_err());
+    }
+}
