@@ -12,6 +12,7 @@ type ChoiceSelectProps<T extends string> = {
   value: T;
   options: Array<ChoiceOption<T>>;
   placeholder?: string;
+  position?: "auto" | "top";
   onChange: (value: T) => void;
 };
 
@@ -19,6 +20,7 @@ export function ChoiceSelect<T extends string>({
   value,
   options,
   placeholder = "请选择",
+  position = "auto",
   onChange,
 }: ChoiceSelectProps<T>) {
   const selected = options.find((option) => option.value === value);
@@ -32,7 +34,12 @@ export function ChoiceSelect<T extends string>({
           </span>
           <ChevronDown size={16} className="shrink-0 text-ink/45" />
         </ListboxButton>
-        <ListboxOptions className="absolute z-[70] mt-2 max-h-64 w-full overflow-auto rounded-lg border border-ink/10 bg-panel p-1 shadow-panel outline-none">
+        <ListboxOptions
+          className={cn(
+            "absolute z-[80] max-h-64 w-full overflow-auto rounded-lg border border-ink/10 bg-panel p-1 shadow-panel outline-none",
+            position === "top" ? "bottom-full mb-1" : "mt-2",
+          )}
+        >
           {options.map((option) => (
             <ListboxOption
               key={option.value}

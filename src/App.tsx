@@ -22,16 +22,17 @@ import {
   KeyRound,
   Lock,
   Moon,
+  Palette,
   PauseCircle,
   Pencil,
   PlayCircle,
   Plus,
   Sun,
   Trash2,
-  Unlock,
   WalletCards,
   X,
 } from "lucide-react";
+import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { Button } from "./components/Button";
 import { ChoiceSelect } from "./components/ChoiceSelect";
 import { DatePicker } from "./components/DatePicker";
@@ -93,12 +94,9 @@ const accountTypeOptions: Array<{ value: AccountType; label: string }> = [
 ];
 
 export default function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    const stored = window.localStorage.getItem("asset-snapshot-theme");
-    if (stored === "dark") return true;
-    if (stored === "light") return false;
-    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
-  });
+  const [darkMode, setDarkMode] = useState(
+    () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
+  );
   const [data, setData] = useState<DashboardData>({
     platforms: [],
     accounts: [],
@@ -118,6 +116,7 @@ export default function App() {
   const [editingSnapshotId, setEditingSnapshotId] = useState<number | null>(null);
   const [analysisSnapshotId, setAnalysisSnapshotId] = useState<number | null>(null);
   const [analysisItems, setAnalysisItems] = useState<AnalysisItem[]>([]);
+  const analysisLoadedRef = useRef(false);
   const [platformName, setPlatformName] = useState("");
   const [platformColor, setPlatformColor] = useState("");
   const [platformEdits, setPlatformEdits] = useState<Record<number, string>>({});
@@ -138,8 +137,6 @@ export default function App() {
     note: "",
     amounts: {},
   });
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [saving, setSaving] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -149,6 +146,10 @@ export default function App() {
     start: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString().slice(0, 10),
     end: new Date().toISOString().slice(0, 10),
   });
+
+  const showToast = (text: string, kind: "success" | "error") => {
+    setToast({ text, kind });
+  };
 
   const loadData = useCallback(async () => {
     const nextData = await getDashboardData();
@@ -174,11 +175,11 @@ export default function App() {
         if (status.locked) {
           setLocked(true);
         } else {
-          loadData().catch((reason) => setError(String(reason)));
+          loadData().catch((reason) => showToast(String(reason), "error"));
         }
       })
       .catch(() => {
-        loadData().catch((reason) => setError(String(reason)));
+        loadData().catch((reason) => showToast(String(reason), "error"));
       });
   }, [loadData]);
 
@@ -188,23 +189,10 @@ export default function App() {
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => {
-      const stored = window.localStorage.getItem("asset-snapshot-theme");
-      if (!stored) {
-        setDarkMode(e.matches);
-      }
-    };
+    const handler = (e: MediaQueryListEvent) => setDarkMode(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
-
-  const toggleDarkMode = () => {
-    setDarkMode((current) => {
-      const next = !current;
-      window.localStorage.setItem("asset-snapshot-theme", next ? "dark" : "light");
-      return next;
-    });
-  };
 
   useEffect(() => {
     if (unlockWaitSeconds <= 0) return;
@@ -239,11 +227,10 @@ export default function App() {
           }
           setLocked(false);
           await loadData();
-          setError(null);
-          setMessage("已通过文件打开切换数据文件");
+          showToast("已通过文件打开切换数据文件", "success");
         });
         const errorUnlisten = await listen<string>("data-file-open-error", (event) => {
-          setError(event.payload);
+          showToast(event.payload, "error");
         });
         const encryptedUnlisten = await listen<string>("data-file-encrypted", async () => {
           const status = await getDatabaseStatus();
@@ -263,7 +250,7 @@ export default function App() {
         unlistenDataFileError = errorUnlisten;
         unlistenDataFileEncrypted = encryptedUnlisten;
       })
-      .catch((reason) => setError(String(reason)));
+      .catch((reason) => showToast(String(reason), "error"));
 
     return () => {
       disposed = true;
@@ -278,6 +265,32 @@ export default function App() {
     const timer = setTimeout(() => setToast(null), 2000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // Auto-save analysis on changes
+  useEffect(() => {
+    if (!analysisOpen || !analysisSnapshotId) return;
+    if (!analysisLoadedRef.current) {
+      analysisLoadedRef.current = true;
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        await saveSnapshotAnalysis({
+          snapshotId: analysisSnapshotId,
+          items: normalizeAnalysisItems(analysisItems),
+        });
+      } catch {
+        // silent auto-save
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [analysisItems]);
+
+  // Reset analysis loaded flag when opening new analysis
+  useEffect(() => {
+    if (analysisOpen) return;
+    analysisLoadedRef.current = false;
+  }, [analysisOpen]);
 
   const handleUnlock = async (password: string) => {
     setUnlockError(null);
@@ -306,43 +319,40 @@ export default function App() {
   };
 
   const handleSetPassword = async (password: string) => {
-    setError(null);
     setPasswordLoading(true);
     try {
       const status = await setDatabasePassword({ password });
       setDatabaseStatus(status);
       setPasswordSetupOpen(false);
-      setMessage("数据库密码已设置。请务必记住您的密码。");
+      showToast("数据库密码已设置。请务必记住您的密码。", "success");
     } catch (err) {
-      setError(String(err));
+      showToast(String(err), "error");
     } finally {
       setPasswordLoading(false);
     }
   };
 
   const handleChangePassword = async (newPassword: string) => {
-    setError(null);
     setPasswordLoading(true);
     try {
       await changeDatabasePassword({ newPassword });
       setPasswordChangeOpen(false);
-      setMessage("数据库密码已修改。");
+      showToast("数据库密码已修改。", "success");
     } catch (err) {
-      setError(String(err));
+      showToast(String(err), "error");
     } finally {
       setPasswordLoading(false);
     }
   };
 
   const handleLock = async () => {
-    setError(null);
     try {
       const status = await lockDatabase();
       setDatabaseStatus(status);
       setLocked(true);
       setUnlockError(null);
     } catch (err) {
-      setError(String(err));
+      showToast(String(err), "error");
     }
   };
 
@@ -364,7 +374,6 @@ export default function App() {
   const submitPlatform = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
-    setError(null);
     try {
       const nextData = await createPlatform({ name: platformName });
       if (platformColor) {
@@ -381,9 +390,9 @@ export default function App() {
       }));
       setPlatformName("");
       setPlatformColor("");
-      setMessage("平台已添加");
+      showToast("平台已添加", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -392,7 +401,6 @@ export default function App() {
   const submitAccount = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
-    setError(null);
     try {
       const nextData = await createAccount({
         platformId: Number(accountForm.platformId),
@@ -401,9 +409,9 @@ export default function App() {
       });
       setData(nextData);
       setAccountForm((current) => ({ ...current, name: "" }));
-      setMessage("账户已添加");
+      showToast("账户已添加", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -412,7 +420,6 @@ export default function App() {
   const submitSnapshot = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
-    setError(null);
     try {
       const input = {
         date: snapshotForm.date,
@@ -429,9 +436,9 @@ export default function App() {
       setData(nextData);
       setSnapshotOpen(false);
       setEditingSnapshotId(null);
-      setMessage(editingSnapshotId ? "快照已更新" : "快照已保存");
+      showToast(editingSnapshotId ? "快照已更新" : "快照已保存", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -439,16 +446,15 @@ export default function App() {
 
   const toggleAccountActive = async (account: Account) => {
     setSaving(true);
-    setError(null);
     try {
       const nextData = await updateAccountActive({
         accountId: account.id,
         isActive: !account.isActive,
       });
       setData(nextData);
-      setMessage(account.isActive ? "账户已停用" : "账户已启用");
+      showToast(account.isActive ? "账户已停用" : "账户已启用", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -457,13 +463,12 @@ export default function App() {
   const removeAccount = async (account: Account) => {
     if (!window.confirm(`确定删除账户"${account.name}"吗？已有历史快照的账户不能删除。`)) return;
     setSaving(true);
-    setError(null);
     try {
       const nextData = await deleteAccount({ accountId: account.id });
       setData(nextData);
-      setMessage("账户已删除");
+      showToast("账户已删除", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -480,7 +485,6 @@ export default function App() {
       return;
     }
     setSaving(true);
-    setError(null);
     try {
       const nextData = await deletePlatform({ platformId });
       setData(nextData);
@@ -488,9 +492,9 @@ export default function App() {
         ...current,
         platformId: String(nextData.platforms[0]?.id ?? ""),
       }));
-      setMessage("平台已删除");
+      showToast("平台已删除", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -502,14 +506,13 @@ export default function App() {
     const nextName = (platformEdits[platformId] ?? currentName ?? "").trim();
     if (!currentName || nextName === currentName) return;
     setSaving(true);
-    setError(null);
     try {
       const nextData = await updatePlatform({ platformId, name: nextName, color: platform?.color });
       setData(nextData);
       setPlatformEdits((current) => ({ ...current, [platformId]: nextName }));
-      setMessage("平台已更新");
+      showToast("平台已更新", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -519,13 +522,12 @@ export default function App() {
     const platform = data.platforms.find((p) => p.id === platformId);
     if (!platform) return;
     setSaving(true);
-    setError(null);
     try {
       const nextData = await updatePlatform({ platformId, name: platform.name, color: color || undefined });
       setData(nextData);
-      setMessage("平台颜色已更新");
+      showToast("平台颜色已更新", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -533,13 +535,12 @@ export default function App() {
 
   const movePlatformOrder = async (platformId: number, direction: "up" | "down") => {
     setSaving(true);
-    setError(null);
     try {
       const nextData = await movePlatform({ platformId, direction });
       setData(nextData);
-      setMessage("平台排序已更新");
+      showToast("平台排序已更新", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -550,14 +551,13 @@ export default function App() {
     const nextName = (accountEdits[accountId] ?? currentName ?? "").trim();
     if (!currentName || nextName === currentName) return;
     setSaving(true);
-    setError(null);
     try {
       const nextData = await updateAccount({ accountId, name: nextName });
       setData(nextData);
       setAccountEdits((current) => ({ ...current, [accountId]: nextName }));
-      setMessage("账户已更新");
+      showToast("账户已更新", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -565,13 +565,12 @@ export default function App() {
 
   const changeAccountType = async (accountId: number, type: AccountType) => {
     setSaving(true);
-    setError(null);
     try {
       const nextData = await updateAccountType({ accountId, type });
       setData(nextData);
-      setMessage("账户类型已更新");
+      showToast("账户类型已更新", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -579,13 +578,12 @@ export default function App() {
 
   const moveAccountOrder = async (accountId: number, direction: "up" | "down") => {
     setSaving(true);
-    setError(null);
     try {
       const nextData = await moveAccount({ accountId, direction });
       setData(nextData);
-      setMessage("账户排序已更新");
+      showToast("账户排序已更新", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -594,7 +592,7 @@ export default function App() {
   const editSnapshot = (summary: SnapshotSummary) => {
     const snapshot = data.snapshots.find((item) => item.id === summary.snapshotId);
     if (!snapshot) {
-      setError("快照明细不存在");
+      showToast("快照明细不存在", "error");
       return;
     }
     const amounts = Object.fromEntries([
@@ -611,20 +609,17 @@ export default function App() {
       amounts,
     });
     setSnapshotOpen(true);
-    setError(null);
-    setMessage(null);
   };
 
   const removeSnapshot = async (summary: SnapshotSummary) => {
     if (!window.confirm(`确定删除 ${summary.date} 的快照吗？`)) return;
     setSaving(true);
-    setError(null);
     try {
       const nextData = await deleteSnapshot({ snapshotId: summary.snapshotId });
       setData(nextData);
-      setMessage("快照已删除");
+      showToast("快照已删除", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
@@ -632,38 +627,46 @@ export default function App() {
 
   const openAnalysisModal = async (summary: SnapshotSummary) => {
     setAnalysisSnapshotId(summary.snapshotId);
-    setAnalysisOpen(true);
     setAnalysisItems([]);
-    setError(null);
-    setMessage(null);
+    analysisLoadedRef.current = false;
+    setAnalysisOpen(true);
     try {
       const analysis = await getSnapshotAnalysis({ snapshotId: summary.snapshotId });
       setAnalysisItems(analysis.items.length > 0 ? analysis.items : []);
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     }
   };
 
   const saveAnalysis = async () => {
     if (!analysisSnapshotId) return;
     setSaving(true);
-    setError(null);
     try {
       const nextAnalysis = await saveSnapshotAnalysis({
         snapshotId: analysisSnapshotId,
         items: normalizeAnalysisItems(analysisItems),
       });
       setAnalysisItems(nextAnalysis.items);
-      setMessage("变动分析已保存");
+      showToast("变动分析已保存", "success");
     } catch (reason) {
-      setError(String(reason));
+      showToast(String(reason), "error");
     } finally {
       setSaving(false);
     }
   };
 
   const addAnalysisItem = (type: "income" | "expense") => {
-    setAnalysisItems((current) => [...current, emptyAnalysisItem(type)]);
+    setAnalysisItems((current) => {
+      const next = [...current, emptyAnalysisItem(type)];
+      const newIndex = next.length - 1;
+      setTimeout(() => {
+        const el = document.querySelector(`[data-ai="${newIndex}"]`);
+        el?.scrollIntoView({ block: "center", behavior: "smooth" });
+        const input = el?.querySelector("input");
+        if (input) input.focus();
+      }, 100);
+      return next;
+    });
   };
 
   const updateAnalysisItem = (index: number, nextItem: AnalysisItem) => {
@@ -679,15 +682,12 @@ export default function App() {
   const closeModal = () => {
     setSnapshotOpen(false);
     setEditingSnapshotId(null);
-    setError(null);
-    setMessage(null);
   };
 
   const closeAnalysisModal = () => {
     setAnalysisOpen(false);
     setAnalysisSnapshotId(null);
-    setError(null);
-    setMessage(null);
+    analysisLoadedRef.current = false;
   };
 
   const openConfigModal = () => {
@@ -703,9 +703,10 @@ export default function App() {
   };
 
   const summaries = data.summaries;
-  const lastDate = summaries[summaries.length - 1]?.date ?? "";
-  const lastTotalAsset = summaries[summaries.length - 1]?.totalAsset ?? "0";
-  const lastAvailableAsset = summaries[summaries.length - 1]?.availableAsset ?? "0";
+  const lastSummary = summaries[summaries.length - 1];
+  const lastDate = lastSummary?.date ?? "";
+  const lastTotalAsset = lastSummary?.totalAsset ?? "0";
+  const lastAvailableAsset = lastSummary?.availableAsset ?? "0";
   const enabledAccountCount = activeAccounts.length;
   const trend = buildTrendData(summaries, timeRange, customRange);
 
@@ -719,13 +720,21 @@ export default function App() {
     return [...map.values()];
   }, [data.platforms, data.accounts]);
 
+  const platformSelectOptions = useMemo(
+    () =>
+      data.platforms.map((p) => ({
+        value: String(p.id),
+        label: p.name,
+      })),
+    [data.platforms],
+  );
+
   const analysisSummary = data.summaries.find((s) => s.snapshotId === analysisSnapshotId);
   const analysisPrevious = previousSummaryFor(data.summaries, analysisSnapshotId ?? 0);
   const analysisChange = analysisSummary && analysisPrevious
     ? Number(analysisSummary.totalAsset) - Number(analysisPrevious.totalAsset)
     : 0;
-  const analysisExplained = explainedAmount(analysisItems);
-  const analysisGap = roundMoney(analysisChange - analysisExplained);
+  const analysisGap = roundMoney(analysisChange - explainedAmount(analysisItems));
   const analysisDescription = analysisPrevious
     ? buildAnalysisDescription(analysisItems, analysisChange, analysisGap)
     : "";
@@ -733,7 +742,7 @@ export default function App() {
   if (locked) {
     return (
       <UnlockScreen
-        currentPath={databaseStatus?.currentPath ?? "加载中..."}
+        currentPath={databaseStatus?.currentPath ?? (databaseStatus?.encrypted ? "" : "加载中...")}
         error={unlockError}
         waitSeconds={unlockWaitSeconds}
         onUnlock={handleUnlock}
@@ -749,8 +758,8 @@ export default function App() {
           <Button
             variant="ghost"
             className="size-9 px-0"
-            onClick={toggleDarkMode}
-            title={window.localStorage.getItem("asset-snapshot-theme") ? "手动切换明暗" : "跟随系统（可点击切换）"}
+            onClick={() => setDarkMode((c) => !c)}
+            title="切换明暗"
           >
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
           </Button>
@@ -763,22 +772,11 @@ export default function App() {
             数据文件
           </Button>
           {databaseStatus?.encrypted ? (
-            <>
-              <Button variant="secondary" onClick={() => setPasswordChangeOpen(true)}>
-                <KeyRound size={18} />
-                修改密码
-              </Button>
-              <Button variant="secondary" onClick={handleLock}>
-                <Lock size={18} />
-                锁定
-              </Button>
-            </>
-          ) : (
-            <Button variant="secondary" onClick={() => setPasswordSetupOpen(true)}>
+            <Button variant="secondary" onClick={handleLock}>
               <Lock size={18} />
-              设置密码
+              锁定
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -788,6 +786,7 @@ export default function App() {
         <Stat label="启用账户" value={String(enabledAccountCount)} icon={<Calculator size={20} />} />
       </div>
 
+      {/* Trend + Pie */}
       <div className="rounded-xl bg-panel p-4 shadow-panel sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-semibold text-ink">资产趋势</h2>
@@ -814,42 +813,97 @@ export default function App() {
         {trend.points.length === 0 ? (
           <div className="py-16 text-center text-sm text-ink/45">暂无数据</div>
         ) : (
-          <>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={trend.points}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-ink) / 0.08)" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="rgb(var(--color-ink) / 0.25)" />
-                <YAxis tick={{ fontSize: 12 }} stroke="rgb(var(--color-ink) / 0.25)" />
-                <Tooltip
-                  contentStyle={{
-                    background: "rgb(var(--color-panel))",
-                    border: "1px solid rgb(var(--color-ink) / 0.1)",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    color: "rgb(var(--color-ink))",
-                  }}
-                />
-                <Line type="monotone" dataKey="总资产" stroke="#48634f" strokeWidth={2} dot={false} />
-                {data.platforms.map((platform, idx) => (
-                  <Line
-                    key={platform.id}
-                    type="monotone"
-                    dataKey={platform.name}
-                    stroke={platformColorFor(platform.id, idx)}
-                    strokeWidth={1.5}
-                    strokeDasharray="4 4"
-                    dot={false}
+          <div className="flex flex-col gap-6 lg:flex-row">
+            <div className="shrink-0 lg:w-1/4">
+              <h3 className="mb-3 text-sm font-medium text-ink/55">资产分布</h3>
+              {lastSummary ? (
+                <div className="flex flex-col items-center gap-4">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie
+                        data={lastSummary.platformAssets.map((pa, idx) => ({
+                          name: pa.platformName,
+                          value: Number(pa.amount),
+                        }))}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={70}
+                        innerRadius={40}
+                      >
+                        {lastSummary.platformAssets.map((pa, idx) => (
+                          <Cell key={pa.platformName} fill={platformColorFor(pa.platformId, idx)} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          background: "rgb(var(--color-panel))",
+                          border: "1px solid rgb(var(--color-ink) / 0.1)",
+                          borderRadius: "8px",
+                          fontSize: "13px",
+                          color: "rgb(var(--color-ink))",
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="space-y-1 text-sm">
+                    {lastSummary.platformAssets.map((pa, idx) => (
+                      <div key={pa.platformName} className="flex items-center gap-2">
+                        <span
+                          className="inline-block size-3 rounded-full"
+                          style={{ background: platformColorFor(pa.platformId, idx) }}
+                        />
+                        <span className="text-ink/65">{pa.platformName}</span>
+                        <span className="font-medium text-ink">{money(pa.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-sm text-ink/45">暂无快照数据</div>
+              )}
+            </div>
+            <div className="flex-1">
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={trend.points}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-ink) / 0.08)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="rgb(var(--color-ink) / 0.25)" />
+                  <YAxis tick={{ fontSize: 12 }} stroke="rgb(var(--color-ink) / 0.25)" />
+                  <Tooltip
+                    contentStyle={{
+                      background: "rgb(var(--color-panel))",
+                      border: "1px solid rgb(var(--color-ink) / 0.1)",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      color: "rgb(var(--color-ink))",
+                    }}
                   />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-            <p className="mt-3 text-xs text-ink/45">
-              {trend.rangeLabel} · {trend.points.length} 个节点
-            </p>
-          </>
+                  <Line type="monotone" dataKey="总资产" stroke="#48634f" strokeWidth={2} dot={false} />
+                  {data.platforms.map((platform, idx) => (
+                    <Line
+                      key={platform.id}
+                      type="monotone"
+                      dataKey={platform.name}
+                      stroke={platformColorFor(platform.id, idx)}
+                      strokeWidth={1.5}
+                      strokeDasharray="4 4"
+                      dot={false}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         )}
+        {trend.points.length > 0 ? (
+          <p className="mt-3 text-xs text-ink/45">
+            {trend.rangeLabel} · {trend.points.length} 个节点
+          </p>
+        ) : null}
       </div>
 
+      {/* History */}
       <div className="space-y-6">
         <div className="rounded-xl bg-panel p-4 shadow-panel sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -867,65 +921,11 @@ export default function App() {
                   ),
                 });
                 setSnapshotOpen(true);
-                setError(null);
-                setMessage(null);
               }}
             >
               <Plus size={18} />
               新建快照
             </Button>
-          </div>
-
-          <div className="mb-6 rounded-xl bg-subtle p-4 sm:p-6">
-            <h3 className="mb-3 text-sm font-medium text-ink/55">资产分布</h3>
-            {lastDate ? (
-              <div className="flex flex-wrap items-start gap-8">
-                <ResponsiveContainer width={160} height={160}>
-                  <PieChart>
-                    <Pie
-                      data={summaries[summaries.length - 1]?.platformAssets.map((pa, idx) => ({
-                        name: pa.platformName,
-                        value: Number(pa.amount),
-                        color: platformColorFor(pa.platformId, idx),
-                      }))}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={70}
-                      innerRadius={40}
-                    >
-                      {summaries[summaries.length - 1]?.platformAssets.map((pa, idx) => (
-                        <Cell key={pa.platformName} fill={platformColorFor(pa.platformId, idx)} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        background: "rgb(var(--color-panel))",
-                        border: "1px solid rgb(var(--color-ink) / 0.1)",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        color: "rgb(var(--color-ink))",
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 text-sm">
-                  {summaries[summaries.length - 1]?.platformAssets.map((pa, idx) => (
-                    <div key={pa.platformName} className="flex items-center gap-2">
-                      <span
-                        className="inline-block size-3 rounded-full"
-                        style={{ background: platformColorFor(pa.platformId, idx) }}
-                      />
-                      <span className="text-ink/65">{pa.platformName}</span>
-                      <span className="font-medium text-ink">{money(pa.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="py-8 text-center text-sm text-ink/45">暂无快照数据</div>
-            )}
           </div>
 
           {summaries.length === 0 ? (
@@ -993,8 +993,7 @@ export default function App() {
         </div>
       </div>
 
-      <Feedback message={message} error={error} />
-
+      {/* Data file modal */}
       <Modal
         open={dataFileOpen}
         title="数据文件"
@@ -1022,9 +1021,16 @@ export default function App() {
                   setDataFileInfo(info);
                   const status = await getDatabaseStatus();
                   setDatabaseStatus(status);
-                  setMessage("数据文件已切换");
+                  showToast("数据文件已切换", "success");
                 } catch (err) {
-                  setError(String(err));
+                  const msg = String(err);
+                  if (msg.includes("authentication")) {
+                    const status = await getDatabaseStatus();
+                    setDatabaseStatus(status);
+                    setLocked(true);
+                  } else {
+                    showToast(msg, "error");
+                  }
                 }
               }}
             >
@@ -1044,9 +1050,9 @@ export default function App() {
                   if (!selected) return;
                   const info = await backupDataFile({ path: selected as string });
                   setDataFileInfo(info);
-                  setMessage("备份已导出");
+                  showToast("备份已导出", "success");
                 } catch (err) {
-                  setError(String(err));
+                  showToast(String(err), "error");
                 }
               }}
             >
@@ -1068,9 +1074,16 @@ export default function App() {
                   const nextData = await switchDataFile({ path: (selected as string) });
                   setData(nextData);
                   setDataFileInfo(info);
-                  setMessage("已创建并使用新数据文件");
+                  showToast("已创建并使用新数据文件", "success");
                 } catch (err) {
-                  setError(String(err));
+                  const msg = String(err);
+                  if (msg.includes("authentication")) {
+                    const status = await getDatabaseStatus();
+                    setDatabaseStatus(status);
+                    setLocked(true);
+                  } else {
+                    showToast(msg, "error");
+                  }
                 }
               }}
             >
@@ -1078,10 +1091,25 @@ export default function App() {
               新建数据文件
             </Button>
           </div>
-          <Feedback message={message} error={error} />
+          <div className="border-t border-ink/10 pt-4">
+            {databaseStatus?.encrypted ? (
+              <>
+                <Button variant="secondary" onClick={() => setPasswordChangeOpen(true)}>
+                  <KeyRound size={18} />
+                  修改密码
+                </Button>
+              </>
+            ) : (
+              <Button variant="secondary" onClick={() => setPasswordSetupOpen(true)}>
+                <Lock size={18} />
+                设置密码
+              </Button>
+            )}
+          </div>
         </div>
       </Modal>
 
+      {/* Config modal */}
       <Modal
         open={configOpen}
         title="平台与账户"
@@ -1103,26 +1131,34 @@ export default function App() {
                 onChange={(event) => setPlatformName(event.target.value)}
               />
             </div>
-            <div className="flex items-center gap-1">
-              {presetColors.map((color, idx) => (
-                <button
-                  key={color}
-                  type="button"
-                  className={`size-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                    platformColor === color ? "border-ink scale-110" : "border-transparent"
-                  }`}
-                  style={{ background: color }}
-                  title={presetColorLabels[idx]}
-                  onClick={() => setPlatformColor(color)}
+            <div className="flex items-end">
+              <Popover className="relative">
+                <PopoverButton
+                  className="size-10 rounded-full border-2 border-ink/15 bg-[conic-gradient(red,yellow,lime,cyan,blue,magenta,red)] p-0 transition hover:scale-110"
+                  title="选择颜色"
                 />
-              ))}
-              <input
-                type="color"
-                className="ml-1 size-7 cursor-pointer rounded-full border border-ink/15 bg-transparent p-0"
-                value={platformColor || "#000000"}
-                onChange={(event) => setPlatformColor(event.target.value)}
-                title="自定义颜色"
-              />
+                <PopoverPanel className="absolute bottom-full left-0 z-[80] mb-2 rounded-lg border border-ink/10 bg-panel p-3 shadow-panel">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {presetColors.map((color, idx) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`size-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                          platformColor === color ? "border-ink scale-110" : "border-transparent"
+                        }`}
+                        style={{ background: color }}
+                        title={presetColorLabels[idx]}
+                        onClick={() => setPlatformColor(color)}
+                      />
+                    ))}
+                  </div>
+                  <Input
+                    placeholder="#16进制色码"
+                    value={platformColor}
+                    onChange={(event) => setPlatformColor(event.target.value)}
+                  />
+                </PopoverPanel>
+              </Popover>
             </div>
             <Button type="submit" variant="secondary" disabled={saving || !platformName.trim()}>
               <Plus size={16} />
@@ -1134,10 +1170,31 @@ export default function App() {
             {platformGroups.map(({ platform, accounts }, pIdx) => (
               <div key={platform.id} className="rounded-lg bg-subtle p-3">
                 <div className="mb-2 flex items-center gap-2">
-                  <span
-                    className="inline-block size-3 rounded-full shrink-0"
-                    style={{ background: platformColorFor(platform.id, pIdx) }}
-                  />
+                  <Popover className="relative">
+                    <PopoverButton className="inline-block size-5 shrink-0 rounded-full border-2 border-ink/15 hover:scale-110 transition-transform p-0" style={{ background: platformColorFor(platform.id, pIdx) }} />
+                    <PopoverPanel className="absolute bottom-full left-0 z-[80] mb-2 rounded-lg border border-ink/10 bg-panel p-3 shadow-panel">
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {presetColors.map((color, idx) => (
+                          <button
+                            key={color}
+                            type="button"
+                            className={`size-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                              platform.color === color ? "border-ink scale-110" : "border-transparent"
+                            }`}
+                            style={{ background: color }}
+                            title={presetColorLabels[idx]}
+                            onClick={() => savePlatformColor(platform.id, color)}
+                          />
+                        ))}
+                      </div>
+                      <Input
+                        placeholder="#16进制色码"
+                        value={platform.color ?? ""}
+                        onChange={(event) => savePlatformColor(platform.id, event.target.value)}
+                        onBlur={(event) => savePlatformColor(platform.id, event.target.value)}
+                      />
+                    </PopoverPanel>
+                  </Popover>
                   <span className="font-semibold text-ink">{platform.name}</span>
                   <div className="flex items-center gap-1">
                     <Button
@@ -1167,22 +1224,6 @@ export default function App() {
                     >
                       <Trash2 size={14} />
                     </Button>
-                  </div>
-                  <div className="ml-auto flex items-center gap-1">
-                    {presetColors.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        className={`size-4 rounded-full border transition-transform hover:scale-125 ${
-                          (platform.color || platformColorDefaults[pIdx % platformColorDefaults.length]) === color
-                            ? "border-ink/50 scale-125"
-                            : "border-transparent"
-                        }`}
-                        style={{ background: color }}
-                        title={presetColorLabels[presetColors.indexOf(color)]}
-                        onClick={() => savePlatformColor(platform.id, color)}
-                      />
-                    ))}
                   </div>
                 </div>
                 <div className="mb-1">
@@ -1270,24 +1311,15 @@ export default function App() {
           </div>
 
           <form className="flex flex-wrap items-end gap-3" onSubmit={submitAccount}>
-            <div className="min-w-[100px]">
+            <div className="min-w-[140px]">
               <Label>平台</Label>
-              <select
-                className="w-full rounded-md border border-ink/10 bg-panel px-3 py-2 text-sm text-ink outline-none"
+              <ChoiceSelect
                 value={accountForm.platformId}
-                onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, platformId: event.target.value }))
-                }
-              >
-                <option value="" disabled>
-                  选择平台
-                </option>
-                {data.platforms.map((platform) => (
-                  <option key={platform.id} value={String(platform.id)}>
-                    {platform.name}
-                  </option>
-                ))}
-              </select>
+                options={platformSelectOptions}
+                placeholder="选择平台"
+                position="top"
+                onChange={(value) => setAccountForm((current) => ({ ...current, platformId: value }))}
+              />
             </div>
             <div className="min-w-[100px] flex-1">
               <Label>账户名称</Label>
@@ -1304,6 +1336,7 @@ export default function App() {
               <ChoiceSelect
                 value={accountForm.type}
                 options={accountTypeOptions}
+                position="top"
                 onChange={(value) => setAccountForm((current) => ({ ...current, type: value }))}
               />
             </div>
@@ -1316,10 +1349,10 @@ export default function App() {
               添加
             </Button>
           </form>
-          <Feedback message={message} error={error} />
         </div>
       </Modal>
 
+      {/* Snapshot modal */}
       <Modal
         open={snapshotOpen}
         title={editingSnapshotId ? "编辑快照" : "新建快照"}
@@ -1393,16 +1426,23 @@ export default function App() {
             ) : null}
             {snapshotAccounts.map((account) => {
               const platform = data.platforms.find((item) => item.id === account.platformId);
+              const pIdx = data.platforms.findIndex((p) => p.id === account.platformId);
               return (
                 <div
                   key={account.id}
                   className="grid gap-3 rounded-lg border border-ink/10 p-3 sm:grid-cols-[1fr_180px]"
                 >
-                  <div>
-                    <p className="font-medium text-ink">{account.name}</p>
-                    <p className="mt-1 text-sm text-ink/55">
-                      {platform?.name} · {accountTypeLabel(account.type)}
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-block size-3 rounded-full shrink-0"
+                      style={{ background: platformColorFor(account.platformId, pIdx) }}
+                    />
+                    <div>
+                      <p className="font-medium text-ink">{account.name}</p>
+                      <p className="mt-1 text-sm text-ink/55">
+                        {platform?.name} · {accountTypeLabel(account.type)}
+                      </p>
+                    </div>
                   </div>
                   <Input
                     inputMode="decimal"
@@ -1421,28 +1461,19 @@ export default function App() {
               );
             })}
           </div>
-          <Feedback message={message} error={error} />
         </form>
       </Modal>
 
+      {/* Analysis modal */}
       <Modal
         open={analysisOpen}
         title="资产变动分析"
         description="解释两次快照之间的重要收入与支出，不记录完整流水。"
         onClose={closeAnalysisModal}
         footer={
-          <>
-            <Button type="button" variant="secondary" onClick={closeAnalysisModal}>
-              关闭
-            </Button>
-            <Button
-              type="button"
-              onClick={saveAnalysis}
-              disabled={saving || !analysisSummary || !analysisPrevious}
-            >
-              保存分析
-            </Button>
-          </>
+          <Button type="button" variant="secondary" onClick={closeAnalysisModal}>
+            关闭
+          </Button>
         }
       >
         <div className="space-y-5">
@@ -1540,8 +1571,6 @@ export default function App() {
               </div>
             </>
           )}
-
-          <Feedback message={message} error={error} />
         </div>
       </Modal>
 
@@ -1550,7 +1579,7 @@ export default function App() {
         onClose={() => setPasswordSetupOpen(false)}
         onSetPassword={handleSetPassword}
         saving={passwordLoading}
-        error={error}
+        error={null}
       />
 
       <PasswordChangeModal
@@ -1558,7 +1587,7 @@ export default function App() {
         onClose={() => setPasswordChangeOpen(false)}
         onChangePassword={handleChangePassword}
         saving={passwordLoading}
-        error={error}
+        error={null}
       />
 
       {toast ? (
@@ -1641,10 +1670,6 @@ function AnalysisItemCard({
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const addAmount = () => {
-    onChange(itemIndex, { ...item, amounts: [...item.amounts, ""] });
-  };
-
   const handleAmountChange = (amountIndex: number, value: string) => {
     const amounts = item.amounts.map((current, currentIndex) =>
       currentIndex === amountIndex ? value : current,
@@ -1652,16 +1677,23 @@ function AnalysisItemCard({
     onChange(itemIndex, { ...item, amounts });
   };
 
-  const handleAmountBlur = (amountIndex: number) => {
-    if (amountIndex === item.amounts.length - 1 && item.amounts[amountIndex].trim()) {
-      onChange(itemIndex, { ...item, amounts: [...item.amounts, ""] });
-    }
-  };
-
   const handleAmountKeyDown = (amountIndex: number, e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      onChange(itemIndex, { ...item, amounts: [...item.amounts, ""] });
+      const isLast = amountIndex === item.amounts.length - 1;
+      if (isLast && !item.amounts[amountIndex].trim()) {
+        // Last empty input: just focus it (don't add new one)
+        amountRefs.current[amountIndex]?.focus();
+      } else {
+        // Non-last or last is non-empty: add new empty and focus
+        const nextAmounts = isLast
+          ? [...item.amounts, ""]
+          : item.amounts;
+        onChange(itemIndex, { ...item, amounts: nextAmounts });
+        setTimeout(() => {
+          amountRefs.current[nextAmounts.length - 1]?.focus();
+        }, 50);
+      }
     }
   };
 
@@ -1678,7 +1710,7 @@ function AnalysisItemCard({
   };
 
   return (
-    <div className="rounded-lg border border-ink/10 p-3">
+    <div className="rounded-lg border border-ink/10 p-3" data-ai={itemIndex}>
       <div className="flex items-center gap-2">
         <Input
           ref={nameRef}
@@ -1699,52 +1731,38 @@ function AnalysisItemCard({
         </Button>
       </div>
       <div className="mt-3 space-y-2">
-        {item.amounts.map((amount, amountIndex) => (
-          <div key={amountIndex} className="flex items-center gap-2">
-            <Input
-              ref={(el) => { amountRefs.current[amountIndex] = el; }}
-              inputMode="decimal"
-              value={amount}
-              placeholder="金额"
-              onChange={(event) => handleAmountChange(amountIndex, event.target.value)}
-              onBlur={() => handleAmountBlur(amountIndex)}
-              onKeyDown={(e) => handleAmountKeyDown(amountIndex, e)}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              className="size-9 shrink-0 px-0"
-              title="删除金额"
-              onClick={() => removeAmount(amountIndex)}
-              disabled={saving}
-            >
-              <X size={16} />
-            </Button>
-          </div>
-        ))}
-        <div className="flex items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            className="px-3"
-            onClick={addAmount}
-            disabled={saving}
-          >
-            <Plus size={16} />
-            金额
-          </Button>
-          <p className="text-sm font-medium text-ink/65">合计 {money(total)}</p>
-        </div>
+        {item.amounts.map((amount, amountIndex) => {
+          const isLast = amountIndex === item.amounts.length - 1;
+          const isEmpty = !amount.trim();
+          return (
+            <div key={amountIndex} className="flex items-center gap-2">
+              <Input
+                ref={(el) => { amountRefs.current[amountIndex] = el; }}
+                inputMode="decimal"
+                value={amount}
+                placeholder="金额"
+                onChange={(event) => handleAmountChange(amountIndex, event.target.value)}
+                onKeyDown={(e) => handleAmountKeyDown(amountIndex, e)}
+              />
+              {(!isEmpty || !isLast) ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="size-9 shrink-0 px-0"
+                  title="删除金额"
+                  onClick={() => removeAmount(amountIndex)}
+                  disabled={saving}
+                >
+                  <X size={16} />
+                </Button>
+              ) : (
+                <div className="size-9 shrink-0" />
+              )}
+            </div>
+          );
+        })}
+        <p className="text-sm font-medium text-ink/65 text-right">合计 {money(total)}</p>
       </div>
-    </div>
-  );
-}
-
-function Feedback({ message, error }: { message: string | null; error: string | null }) {
-  if (!message && !error) return null;
-  return (
-    <div className="mt-4 rounded-md border border-ink/10 bg-subtle px-3 py-2 text-sm">
-      {error ? <p className="text-coral">{error}</p> : <p className="text-moss">{message}</p>}
     </div>
   );
 }
@@ -1874,26 +1892,41 @@ function roundMoney(value: number) {
 }
 
 function buildAnalysisDescription(items: AnalysisItem[], assetChange: number, gap: number) {
-  const parts = normalizeAnalysisItems(items)
+  const normalized = normalizeAnalysisItems(items)
     .map((item) => ({
-      name: item.name,
+      ...item,
       amount: sumAmounts(item.amounts),
     }))
-    .filter((item) => item.amount !== 0)
-    .sort((left, right) => Math.abs(right.amount) - Math.abs(left.amount))
-    .map((item) => `${item.name}${formatPlainMoney(item.amount)}元`);
+    .filter((item) => item.amount !== 0);
 
+  const incomeItems = normalized
+    .filter((item) => item.type === "income")
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+  const expenseItems = normalized
+    .filter((item) => item.type === "expense")
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+
+  const parts: string[] = [];
+
+  for (const item of incomeItems) {
+    parts.push(`收入${item.name}${formatPlainMoney(item.amount)}元，`);
+  }
   if (gap > 0) {
-    parts.push(`其余收入${formatPlainMoney(gap)}元`);
-  } else if (gap < 0) {
-    parts.push(`其余支出${formatPlainMoney(Math.abs(gap))}元`);
+    parts.push(`其余收入${formatPlainMoney(gap)}元，`);
+  }
+
+  for (const item of expenseItems) {
+    parts.push(`支出${item.name}${formatPlainMoney(Math.abs(item.amount))}元，`);
+  }
+  if (gap < 0) {
+    parts.push(`其余支出${formatPlainMoney(Math.abs(gap))}元，`);
   }
 
   const summary =
     assetChange >= 0
       ? `总资产增加${formatPlainMoney(Math.abs(assetChange))}元。`
       : `总资产减少${formatPlainMoney(Math.abs(assetChange))}元。`;
-  return [...parts.map((part) => `${part}，`), summary].join("\n");
+  return [...parts, summary].join("\n");
 }
 
 function formatPlainMoney(value: number) {
