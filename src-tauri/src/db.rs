@@ -5,7 +5,7 @@ use crate::models::{
     DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, MoveAccountInput,
     MoveDirection, MovePlatformInput, Platform, Snapshot, SnapshotAnalysis, SnapshotItem,
     SnapshotItemForCalc, SnapshotSummary, UpdateAccountActiveInput, UpdateAccountInput,
-    UpdatePlatformInput, UpdateSnapshotInput,
+    UpdatePlatformInput, UpdateSnapshotInput, UpdateAccountTypeInput,
 };
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
@@ -316,8 +316,8 @@ impl AppDatabase {
 
         let transaction = self.conn.transaction()?;
         transaction.execute(
-            "INSERT INTO snapshots (date, note) VALUES (?1, ?2)",
-            params![date, normalized_note(input.note.as_deref())],
+            "INSERT INTO snapshots (date, snapshot_time, note) VALUES (?1, ?2, ?3)",
+            params![date, input.snapshot_time.as_deref().unwrap_or("00:00"), normalized_note(input.note.as_deref())],
         )?;
         let snapshot_id = transaction.last_insert_rowid();
 
@@ -333,9 +333,10 @@ impl AppDatabase {
 
         let transaction = self.conn.transaction()?;
         let changed = transaction.execute(
-            "UPDATE snapshots SET date = ?1, note = ?2 WHERE id = ?3",
+            "UPDATE snapshots SET date = ?1, snapshot_time = ?2, note = ?3 WHERE id = ?4",
             params![
                 date,
+                input.snapshot_time.as_deref().unwrap_or("00:00"),
                 normalized_note(input.note.as_deref()),
                 input.snapshot_id
             ],
@@ -383,8 +384,8 @@ impl AppDatabase {
         }
 
         let changed = self.conn.execute(
-            "UPDATE platforms SET name = ?1 WHERE id = ?2",
-            params![name, input.platform_id],
+            "UPDATE platforms SET name = ?1, color = ?2 WHERE id = ?3",
+            params![name, input.color.as_deref(), input.platform_id],
         )?;
         if changed == 0 {
             return Err(AppError::Validation("平台不存在".into()));
@@ -430,6 +431,17 @@ impl AppDatabase {
         let changed = self.conn.execute(
             "UPDATE accounts SET name = ?1 WHERE id = ?2",
             params![name, input.account_id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::Validation("账户不存在".into()));
+        }
+        Ok(())
+    }
+
+    pub fn update_account_type(&self, input: UpdateAccountTypeInput) -> Result<(), AppError> {
+        let changed = self.conn.execute(
+            "UPDATE accounts SET type = ?1 WHERE id = ?2",
+            params![input.account_type.as_db(), input.account_id],
         )?;
         if changed == 0 {
             return Err(AppError::Validation("账户不存在".into()));
@@ -702,10 +714,20 @@ impl AppDatabase {
             CREATE INDEX IF NOT EXISTS idx_analysis_amounts_item_id ON analysis_amounts(analysis_item_id);
             "#,
         )?;
+
+        // Migrations: add columns that may not exist in older databases
+        self.conn.execute_batch(
+            r#"
+            ALTER TABLE platforms ADD COLUMN color TEXT;
+            ALTER TABLE snapshots ADD COLUMN snapshot_time TEXT DEFAULT '00:00';
+            "#,
+        )
+        .ok();
         Ok(())
     }
 
     fn seed_if_empty(&self) -> Result<()> {
+
         let count: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM platforms", [], |row| row.get(0))?;
@@ -780,12 +802,13 @@ impl AppDatabase {
     fn platforms(&self) -> Result<Vec<Platform>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, sort_order FROM platforms ORDER BY sort_order, id")?;
+            .prepare("SELECT id, name, color, sort_order FROM platforms ORDER BY sort_order, id")?;
         let rows = stmt.query_map([], |row| {
             Ok(Platform {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                sort_order: row.get(2)?,
+                color: row.get(2)?,
+                sort_order: row.get(3)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -865,21 +888,23 @@ impl AppDatabase {
     fn snapshots(&self) -> Result<Vec<Snapshot>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, date, note FROM snapshots ORDER BY date ASC, id ASC")?;
+            .prepare("SELECT id, date, snapshot_time, note FROM snapshots ORDER BY date ASC, id ASC")?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
             ))
         })?;
         let snapshots = rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
         snapshots
             .into_iter()
-            .map(|(id, date, note)| {
+            .map(|(id, date, snapshot_time, note)| {
                 Ok(Snapshot {
                     id,
+                    snapshot_time,
                     date,
                     note,
                     items: self.snapshot_items(id)?,
@@ -1140,7 +1165,7 @@ mod tests {
         let mut db = test_db();
         db.create_platform(CreatePlatformInput { name: "支付宝".into() }).unwrap();
         let platforms = db.platforms().unwrap();
-        db.update_platform(UpdatePlatformInput { platform_id: platforms[0].id, name: "蚂蚁财富".into() }).unwrap();
+        db.update_platform(UpdatePlatformInput { platform_id: platforms[0].id, name: "蚂蚁财富".into(), color: None }).unwrap();
         let platforms = db.platforms().unwrap();
         assert_eq!(platforms[0].name, "蚂蚁财富");
     }
@@ -1200,6 +1225,7 @@ mod tests {
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
             date: "2026-06-01".into(),
+            snapshot_time: None,
             note: Some("测试快照".into()),
             items: vec![
                 CreateSnapshotItemInput { account_id: accounts[0].id, amount: "10000.00".into() },
@@ -1221,6 +1247,7 @@ mod tests {
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
             date: "2026-06-01".into(), note: None,
+            snapshot_time: None,
             items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
         }).unwrap();
         let snapshots = db.snapshots().unwrap();
@@ -1240,12 +1267,14 @@ mod tests {
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
             date: "2026-06-01".into(), note: None,
+            snapshot_time: None,
             items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
         }).unwrap();
         let snapshots = db.snapshots().unwrap();
         db.update_snapshot(UpdateSnapshotInput {
             snapshot_id: snapshots[0].id,
             date: "2026-06-15".into(),
+            snapshot_time: None,
             note: Some("更新".into()),
             items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "8000.00".into() }],
         }).unwrap();
@@ -1264,6 +1293,7 @@ mod tests {
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
             date: "2026-06-01".into(), note: None,
+            snapshot_time: None,
             items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "10000.00".into() }],
         }).unwrap();
         let snapshots = db.snapshots().unwrap();
@@ -1333,6 +1363,7 @@ mod tests {
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
             date: "2026-06-01".into(), note: None,
+            snapshot_time: None,
             items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
         }).unwrap();
         let result = db.delete_account(DeleteAccountInput { account_id: accounts[0].id });

@@ -47,6 +47,7 @@ impl From<anyhow::Error> for AppError {
 pub struct Platform {
     pub id: i64,
     pub name: String,
+    pub color: Option<String>,
     pub sort_order: i64,
 }
 
@@ -117,6 +118,7 @@ pub struct SnapshotItem {
 pub struct Snapshot {
     pub id: i64,
     pub date: String,
+    pub snapshot_time: Option<String>,
     pub note: Option<String>,
     pub items: Vec<SnapshotItem>,
 }
@@ -211,6 +213,7 @@ pub struct CreateSnapshotItemInput {
 #[serde(rename_all = "camelCase")]
 pub struct CreateSnapshotInput {
     pub date: String,
+    pub snapshot_time: Option<String>,
     pub note: Option<String>,
     pub items: Vec<CreateSnapshotItemInput>,
 }
@@ -220,6 +223,7 @@ pub struct CreateSnapshotInput {
 pub struct UpdateSnapshotInput {
     pub snapshot_id: i64,
     pub date: String,
+    pub snapshot_time: Option<String>,
     pub note: Option<String>,
     pub items: Vec<CreateSnapshotItemInput>,
 }
@@ -242,6 +246,7 @@ pub struct UpdateAccountActiveInput {
 pub struct UpdatePlatformInput {
     pub platform_id: i64,
     pub name: String,
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -256,6 +261,14 @@ pub struct MovePlatformInput {
 pub struct UpdateAccountInput {
     pub account_id: i64,
     pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAccountTypeInput {
+    pub account_id: i64,
+    #[serde(rename = "type")]
+    pub account_type: AccountType,
 }
 
 #[derive(Debug, Clone, Deserialize)]

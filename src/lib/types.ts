@@ -4,6 +4,7 @@ export type Platform = {
   id: number;
   name: string;
   sortOrder: number;
+  color?: string;
 };
 
 export type Account = {
@@ -23,6 +24,7 @@ export type SnapshotItem = {
 export type Snapshot = {
   id: number;
   date: string;
+  snapshotTime?: string;
   note?: string;
   items: SnapshotItem[];
 };
@@ -82,3 +84,4 @@ export type UnlockInput = {
 export type ChangePasswordInput = {
   newPassword: string;
 };
+

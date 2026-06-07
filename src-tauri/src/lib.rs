@@ -8,7 +8,7 @@ use models::{
     CreateSnapshotInput, DashboardData, DataFileInfo, DatabaseStatus, DeleteAccountInput,
     DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, MoveAccountInput,
     MovePlatformInput, SetPasswordInput, SnapshotAnalysis, SwitchDataFileInput,
-    UnlockInput, UpdateAccountActiveInput, UpdateAccountInput, UpdatePlatformInput,
+    UnlockInput, UpdateAccountActiveInput, UpdateAccountInput, UpdatePlatformInput, UpdateAccountTypeInput,
     UpdateSnapshotInput, MIN_PASSWORD_LENGTH,
 };
 use std::ffi::OsStr;
@@ -369,6 +369,17 @@ fn update_account(
 }
 
 #[tauri::command]
+fn update_account_type(
+    state: tauri::State<'_, AppState>,
+    input: UpdateAccountTypeInput,
+) -> Result<DashboardData, AppError> {
+    let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
+    let db = require_unlocked(&mut db_state)?;
+    db.update_account_type(input)?;
+    db.dashboard_data()
+}
+
+#[tauri::command]
 fn move_account(
     state: tauri::State<'_, AppState>,
     input: MoveAccountInput,
@@ -473,6 +484,7 @@ pub fn run() {
             update_platform,
             move_platform,
             update_account,
+            update_account_type,
             move_account,
             delete_account,
             delete_platform,

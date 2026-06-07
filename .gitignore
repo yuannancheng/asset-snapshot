@@ -10,3 +10,4 @@ src-tauri/target
 .DS_Store
 .env
 .envrc
+.git.corrupted

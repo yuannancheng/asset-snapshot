@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
   Cell,
@@ -15,12 +15,10 @@ import {
   ArrowDown,
   ArrowUp,
   Calculator,
-  Check,
   Database,
   Download,
   FilePlus2,
   FolderOpen,
-  History,
   KeyRound,
   Lock,
   Moon,
@@ -28,7 +26,6 @@ import {
   Pencil,
   PlayCircle,
   Plus,
-  Sparkles,
   Sun,
   Trash2,
   Unlock,
@@ -67,6 +64,7 @@ import {
   unlockDatabase,
   updateAccount,
   updateAccountActive,
+  updateAccountType,
   updatePlatform,
   updateSnapshot,
 } from "./lib/api";
@@ -82,8 +80,9 @@ import type {
   SnapshotSummary,
 } from "./lib/types";
 
-const platformColors = ["#48634f", "#f47d6b", "#d4a017", "#5b7f95", "#7a6f55"];
-const darkPlatformColors = ["#94be9e", "#ff917e", "#e8b845", "#8ab7cf", "#c7b88e"];
+const platformColorDefaults = ["#2F80ED", "#27AE60", "#F2C94C", "#EB5757", "#9B51E0", "#56CCF2", "#F2994A", "#6FCF97"];
+const presetColors = ["#2F80ED", "#27AE60", "#F2C94C", "#EB5757", "#9B51E0", "#56CCF2", "#F2994A", "#6FCF97"];
+const presetColorLabels = ["蓝", "绿", "黄", "红", "紫", "青", "橙", "浅绿"];
 const dayMs = 24 * 60 * 60 * 1000;
 const dataFileFilters = [{ name: "资产快照数据文件", extensions: ["as", "db", "sqlite", "sqlite3"] }];
 
@@ -120,6 +119,7 @@ export default function App() {
   const [analysisSnapshotId, setAnalysisSnapshotId] = useState<number | null>(null);
   const [analysisItems, setAnalysisItems] = useState<AnalysisItem[]>([]);
   const [platformName, setPlatformName] = useState("");
+  const [platformColor, setPlatformColor] = useState("");
   const [platformEdits, setPlatformEdits] = useState<Record<number, string>>({});
   const [accountEdits, setAccountEdits] = useState<Record<number, string>>({});
   const [accountForm, setAccountForm] = useState<{
@@ -129,10 +129,12 @@ export default function App() {
   }>({ platformId: "", name: "", type: "asset_liquid" });
   const [snapshotForm, setSnapshotForm] = useState<{
     date: string;
+    time: string;
     note: string;
     amounts: Record<number, string>;
   }>({
     date: new Date().toISOString().slice(0, 10),
+    time: "00:00",
     note: "",
     amounts: {},
   });
@@ -182,8 +184,27 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
-    window.localStorage.setItem("asset-snapshot-theme", darkMode ? "dark" : "light");
   }, [darkMode]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => {
+      const stored = window.localStorage.getItem("asset-snapshot-theme");
+      if (!stored) {
+        setDarkMode(e.matches);
+      }
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const toggleDarkMode = () => {
+    setDarkMode((current) => {
+      const next = !current;
+      window.localStorage.setItem("asset-snapshot-theme", next ? "dark" : "light");
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (unlockWaitSeconds <= 0) return;
@@ -206,7 +227,6 @@ export default function App() {
         const dataFileUnlisten = await listen<DataFileInfo>("data-file-switched", async (event) => {
           setDataFileInfo(event.payload);
           setUnlockError(null);
-          // Check the new file's encryption/lock status instead of assuming unlocked
           try {
             const status = await getDatabaseStatus();
             setDatabaseStatus(status);
@@ -216,7 +236,6 @@ export default function App() {
               return;
             }
           } catch {
-            // Fall through and load data if status check fails
           }
           setLocked(false);
           await loadData();
@@ -274,17 +293,14 @@ export default function App() {
     } catch (err) {
       const message = String(err);
       setUnlockError(message);
-      // Parse wait seconds from error message (backend returns "... X seconds ...")
       const waitMatch = message.match(/(\d+)\s*seconds/);
       if (waitMatch) {
         setUnlockWaitSeconds(Number(waitMatch[1]));
       }
-      // Refresh status to get updated failed attempts / wait info
       try {
         const status = await getDatabaseStatus();
         setDatabaseStatus(status);
       } catch {
-        // ignore
       }
     }
   };
@@ -351,12 +367,20 @@ export default function App() {
     setError(null);
     try {
       const nextData = await createPlatform({ name: platformName });
-      setData(nextData);
+      if (platformColor) {
+        const newPlatform = nextData.platforms[nextData.platforms.length - 1];
+        if (newPlatform) {
+          await updatePlatform({ platformId: newPlatform.id, name: newPlatform.name, color: platformColor });
+        }
+      }
+      const refreshedData = await getDashboardData();
+      setData(refreshedData);
       setAccountForm((current) => ({
         ...current,
-        platformId: current.platformId || String(nextData.platforms[0]?.id ?? ""),
+        platformId: current.platformId || String(refreshedData.platforms[0]?.id ?? ""),
       }));
       setPlatformName("");
+      setPlatformColor("");
       setMessage("平台已添加");
     } catch (reason) {
       setError(String(reason));
@@ -392,6 +416,7 @@ export default function App() {
     try {
       const input = {
         date: snapshotForm.date,
+        snapshotTime: snapshotForm.time,
         note: snapshotForm.note,
         items: snapshotAccounts.map((account) => ({
           accountId: account.id,
@@ -430,7 +455,7 @@ export default function App() {
   };
 
   const removeAccount = async (account: Account) => {
-    if (!window.confirm(`确定删除账户“${account.name}”吗？已有历史快照的账户不能删除。`)) return;
+    if (!window.confirm(`确定删除账户"${account.name}"吗？已有历史快照的账户不能删除。`)) return;
     setSaving(true);
     setError(null);
     try {
@@ -449,7 +474,7 @@ export default function App() {
     if (!platform) return;
     if (
       !window.confirm(
-        `确定删除平台“${platform.name}”吗？只有平台下所有账户都没有历史快照时才会删除。`,
+        `确定删除平台"${platform.name}"吗？只有平台下所有账户都没有历史快照时才会删除。`,
       )
     ) {
       return;
@@ -472,16 +497,33 @@ export default function App() {
   };
 
   const savePlatformName = async (platformId: number) => {
-    const currentName = data.platforms.find((platform) => platform.id === platformId)?.name;
+    const platform = data.platforms.find((p) => p.id === platformId);
+    const currentName = platform?.name;
     const nextName = (platformEdits[platformId] ?? currentName ?? "").trim();
     if (!currentName || nextName === currentName) return;
     setSaving(true);
     setError(null);
     try {
-      const nextData = await updatePlatform({ platformId, name: nextName });
+      const nextData = await updatePlatform({ platformId, name: nextName, color: platform?.color });
       setData(nextData);
       setPlatformEdits((current) => ({ ...current, [platformId]: nextName }));
       setMessage("平台已更新");
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const savePlatformColor = async (platformId: number, color: string) => {
+    const platform = data.platforms.find((p) => p.id === platformId);
+    if (!platform) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const nextData = await updatePlatform({ platformId, name: platform.name, color: color || undefined });
+      setData(nextData);
+      setMessage("平台颜色已更新");
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -521,6 +563,20 @@ export default function App() {
     }
   };
 
+  const changeAccountType = async (accountId: number, type: AccountType) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const nextData = await updateAccountType({ accountId, type });
+      setData(nextData);
+      setMessage("账户类型已更新");
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const moveAccountOrder = async (accountId: number, direction: "up" | "down") => {
     setSaving(true);
     setError(null);
@@ -550,6 +606,7 @@ export default function App() {
     setEditingSnapshotId(snapshot.id);
     setSnapshotForm({
       date: snapshot.date,
+      time: snapshot.snapshotTime ?? "00:00",
       note: snapshot.note ?? "",
       amounts,
     });
@@ -581,7 +638,7 @@ export default function App() {
     setMessage(null);
     try {
       const analysis = await getSnapshotAnalysis({ snapshotId: summary.snapshotId });
-      setAnalysisItems(analysis.items.length > 0 ? analysis.items : [emptyAnalysisItem("income")]);
+      setAnalysisItems(analysis.items.length > 0 ? analysis.items : []);
     } catch (reason) {
       setError(String(reason));
     }
@@ -619,734 +676,311 @@ export default function App() {
     setAnalysisItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
-  const autofillAnalysisGap = () => {
-    if (!analysisSnapshotId) return;
-    const summary = data.summaries.find((item) => item.snapshotId === analysisSnapshotId);
-    const previousSummary = previousSummaryFor(data.summaries, analysisSnapshotId);
-    if (!summary || !previousSummary) return;
-
-    const change = Number(summary.totalAsset) - Number(previousSummary.totalAsset);
-    const gap = roundMoney(change - explainedAmount(analysisItems));
-    if (gap === 0) return;
-
-    setAnalysisItems((current) => [
-      ...current,
-      {
-        type: gap > 0 ? "income" : "expense",
-        name: gap > 0 ? "其余收入" : "其余支出",
-        amounts: [Math.abs(gap).toFixed(2)],
-      },
-    ]);
-  };
-
-  const openSnapshotModal = () => {
-    setEditingSnapshotId(null);
-    setSnapshotForm((current) => ({
-      ...current,
-      date: new Date().toISOString().slice(0, 10),
-      amounts: Object.fromEntries(activeAccounts.map((account) => [account.id, "0"])),
-    }));
-    setSnapshotOpen(true);
-    setError(null);
-    setMessage(null);
-  };
-
-  const openDataFileModal = async () => {
-    setDataFileOpen(true);
-    setError(null);
-    setMessage(null);
-    try {
-      setDataFileInfo(await getDataFileInfo());
-    } catch (reason) {
-      setError(String(reason));
-    }
-  };
-
-  const chooseDataFile = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({
-        title: "选择资产快照数据文件",
-        multiple: false,
-        directory: false,
-        filters: dataFileFilters,
-      });
-      if (typeof selected !== "string") return;
-      // Skip if the same file is already open (locked or unlocked)
-      if (selected === databaseStatus?.currentPath) {
-        setDataFileOpen(false);
-        setMessage("当前已在使用此数据文件");
-        return;
-      }
-      const nextData = await switchDataFile({ path: selected });
-      setData(nextData);
-      setDataFileInfo(await getDataFileInfo());
-      setDataFileOpen(false);
-      const status = await getDatabaseStatus();
-      setDatabaseStatus(status);
-      setLocked(status.locked);
-      setUnlockError(null);
-      setMessage("已切换数据文件");
-    } catch (reason) {
-      // Check backend state to decide whether the target file is encrypted/locked
-      try {
-        const status = await getDatabaseStatus();
-        setDatabaseStatus(status);
-        if (status.locked) {
-          setLocked(true);
-          setUnlockError(null);
-          setUnlockWaitSeconds(0);
-          setDataFileOpen(false);
-          setError(null);
-          return;
-        }
-      } catch {
-        // Fall through to showing the error
-      }
-      setError(String(reason));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const createDataFile = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const selected = await save({
-        title: "新建资产快照数据文件",
-        defaultPath: "asset-snapshot.as",
-        filters: dataFileFilters,
-      });
-      if (!selected) return;
-      const nextData = await switchDataFile({ path: selected });
-      setData(nextData);
-      setDataFileInfo(await getDataFileInfo());
-      setDataFileOpen(false);
-      const status = await getDatabaseStatus();
-      setDatabaseStatus(status);
-      setLocked(status.locked);
-      setUnlockError(null);
-      setMessage("已创建并切换数据文件");
-    } catch (reason) {
-      try {
-        const status = await getDatabaseStatus();
-        setDatabaseStatus(status);
-        if (status.locked) {
-          setLocked(true);
-          setUnlockError(null);
-          setUnlockWaitSeconds(0);
-          setDataFileOpen(false);
-          setError(null);
-          return;
-        }
-      } catch {
-        // Fall through to showing the error
-      }
-      setError(String(reason));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const exportBackup = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const todayText = new Date().toISOString().slice(0, 10);
-      const selected = await save({
-        title: "导出数据文件备份",
-        defaultPath: `asset-snapshot-backup-${todayText}.as`,
-        filters: dataFileFilters,
-      });
-      if (!selected) return;
-      setDataFileInfo(await backupDataFile({ path: selected }));
-      setMessage("备份已导出");
-    } catch (reason) {
-      setError(String(reason));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openConfigModal = () => {
-    setPlatformEdits(Object.fromEntries(data.platforms.map((platform) => [platform.id, platform.name])));
-    setAccountEdits(Object.fromEntries(data.accounts.map((account) => [account.id, account.name])));
-    setAccountForm((current) => ({
-      ...current,
-      platformId:
-        data.platforms.some((platform) => String(platform.id) === current.platformId)
-          ? current.platformId
-          : String(data.platforms[0]?.id ?? ""),
-    }));
-    setConfigOpen(true);
-    setError(null);
-    setMessage(null);
-  };
-
   const closeModal = () => {
-    setConfigOpen(false);
-    setDataFileOpen(false);
     setSnapshotOpen(false);
-    setAnalysisOpen(false);
     setEditingSnapshotId(null);
+    setError(null);
+    setMessage(null);
+  };
+
+  const closeAnalysisModal = () => {
+    setAnalysisOpen(false);
     setAnalysisSnapshotId(null);
     setError(null);
     setMessage(null);
   };
 
-  const latest = data.summaries[data.summaries.length - 1];
-  const previous = data.summaries[data.summaries.length - 2];
-
-  const totalDelta = useMemo(() => {
-    if (!latest || !previous) return "暂无历史对比";
-    return signedAmount(Number(latest.totalAsset) - Number(previous.totalAsset));
-  }, [latest, previous]);
-
-  const trend = useMemo(
-    () => buildTrendData(data.summaries, timeRange, customRange),
-    [customRange, data.summaries, timeRange],
-  );
-  const chartColors = darkMode ? darkPlatformColors : platformColors;
-  const chartStroke = darkMode ? "#ebf1e8" : "#162018";
-  const chartGrid = darkMode ? "rgba(235, 241, 232, 0.12)" : "#e6e9e2";
-  const chartText = darkMode ? "rgba(235, 241, 232, 0.62)" : "rgba(22, 32, 24, 0.62)";
-  const tooltipStyle = {
-    backgroundColor: darkMode ? "#181e1b" : "#ffffff",
-    border: `1px solid ${darkMode ? "rgba(235, 241, 232, 0.12)" : "rgba(22, 32, 24, 0.12)"}`,
-    borderRadius: 8,
-    color: chartStroke,
+  const openConfigModal = () => {
+    setConfigOpen(true);
+    setPlatformEdits({});
+    setAccountEdits({});
   };
 
-  const distribution: Array<{ name: string; value: number }> =
-    latest?.platformAssets.map((item) => ({
-      name: item.platformName,
-      value: Math.max(Number(item.amount), 0),
-    })) ?? [];
-  const recentSummaries = [...data.summaries].reverse().slice(0, 8);
-  const analysisSummary = analysisSnapshotId
-    ? data.summaries.find((summary) => summary.snapshotId === analysisSnapshotId)
-    : undefined;
-  const analysisPrevious = analysisSnapshotId ? previousSummaryFor(data.summaries, analysisSnapshotId) : undefined;
-  const analysisChange =
-    analysisSummary && analysisPrevious
-      ? roundMoney(Number(analysisSummary.totalAsset) - Number(analysisPrevious.totalAsset))
-      : 0;
-  const analysisExplained = roundMoney(explainedAmount(analysisItems));
+  const platformColorFor = (platformId: number, index: number) => {
+    const platform = data.platforms.find((p) => p.id === platformId);
+    if (platform?.color) return platform.color;
+    return platformColorDefaults[index % platformColorDefaults.length];
+  };
+
+  const summaries = data.summaries;
+  const lastDate = summaries[summaries.length - 1]?.date ?? "";
+  const lastTotalAsset = summaries[summaries.length - 1]?.totalAsset ?? "0";
+  const lastAvailableAsset = summaries[summaries.length - 1]?.availableAsset ?? "0";
+  const enabledAccountCount = activeAccounts.length;
+  const trend = buildTrendData(summaries, timeRange, customRange);
+
+  const platformGroups = useMemo(() => {
+    const map = new Map<number, { platform: typeof data.platforms[0]; accounts: Account[] }>();
+    data.platforms.forEach((p) => map.set(p.id, { platform: p, accounts: [] }));
+    data.accounts.forEach((a) => {
+      const group = map.get(a.platformId);
+      if (group) group.accounts.push(a);
+    });
+    return [...map.values()];
+  }, [data.platforms, data.accounts]);
+
+  const analysisSummary = data.summaries.find((s) => s.snapshotId === analysisSnapshotId);
+  const analysisPrevious = previousSummaryFor(data.summaries, analysisSnapshotId ?? 0);
+  const analysisChange = analysisSummary && analysisPrevious
+    ? Number(analysisSummary.totalAsset) - Number(analysisPrevious.totalAsset)
+    : 0;
+  const analysisExplained = explainedAmount(analysisItems);
   const analysisGap = roundMoney(analysisChange - analysisExplained);
-  const analysisDescription =
-    analysisSummary && analysisPrevious
-      ? buildAnalysisDescription(analysisItems, analysisChange)
-      : "需要至少两次快照才能生成变动说明。";
+  const analysisDescription = analysisPrevious
+    ? buildAnalysisDescription(analysisItems, analysisChange, analysisGap)
+    : "";
 
   if (locked) {
     return (
       <UnlockScreen
-        currentPath={databaseStatus?.currentPath ?? ""}
-        onUnlock={handleUnlock}
+        currentPath={databaseStatus?.currentPath ?? "加载中..."}
         error={unlockError}
         waitSeconds={unlockWaitSeconds}
+        onUnlock={handleUnlock}
       />
     );
   }
 
   return (
-    <main className="min-h-screen bg-app">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-5 py-6 sm:px-8 lg:px-10">
-        <header className="flex flex-col gap-4 border-b border-ink/10 pb-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-moss">本地优先的个人资产工具</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-normal text-ink">资产快照</h1>
+    <main className="mx-auto max-w-7xl space-y-8 px-5 py-6 sm:px-6 sm:py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-lg font-semibold tracking-tight text-ink">资产快照</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="ghost"
+            className="size-9 px-0"
+            onClick={toggleDarkMode}
+            title={window.localStorage.getItem("asset-snapshot-theme") ? "手动切换明暗" : "跟随系统（可点击切换）"}
+          >
+            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </Button>
+          <Button variant="secondary" onClick={openConfigModal}>
+            <WalletCards size={18} />
+            平台与账户
+          </Button>
+          <Button variant="secondary" onClick={() => setDataFileOpen(true)}>
+            <Database size={18} />
+            数据文件
+          </Button>
+          {databaseStatus?.encrypted ? (
+            <>
+              <Button variant="secondary" onClick={() => setPasswordChangeOpen(true)}>
+                <KeyRound size={18} />
+                修改密码
+              </Button>
+              <Button variant="secondary" onClick={handleLock}>
+                <Lock size={18} />
+                锁定
+              </Button>
+            </>
+          ) : (
+            <Button variant="secondary" onClick={() => setPasswordSetupOpen(true)}>
+              <Lock size={18} />
+              设置密码
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Stat label="总资产" value={money(lastTotalAsset)} icon={<WalletCards size={20} />} />
+        <Stat label="可用资产" value={money(lastAvailableAsset)} icon={<PlayCircle size={20} />} />
+        <Stat label="启用账户" value={String(enabledAccountCount)} icon={<Calculator size={20} />} />
+      </div>
+
+      <div className="rounded-xl bg-panel p-4 shadow-panel sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold text-ink">资产趋势</h2>
+          <TimeRangeTabs value={timeRange} onChange={setTimeRange} />
+        </div>
+        {timeRange === "custom" ? (
+          <div className="mb-4 grid gap-3 rounded-md bg-subtle p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start">
+            <div className="space-y-2">
+              <Label>开始日期</Label>
+              <DatePicker
+                value={customRange.start}
+                onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>结束日期</Label>
+              <DatePicker
+                value={customRange.end}
+                onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))}
+              />
+            </div>
           </div>
-          <div className="flex flex-wrap gap-3">
+        ) : null}
+        {trend.points.length === 0 ? (
+          <div className="py-16 text-center text-sm text-ink/45">暂无数据</div>
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={trend.points}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-ink) / 0.08)" />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="rgb(var(--color-ink) / 0.25)" />
+                <YAxis tick={{ fontSize: 12 }} stroke="rgb(var(--color-ink) / 0.25)" />
+                <Tooltip
+                  contentStyle={{
+                    background: "rgb(var(--color-panel))",
+                    border: "1px solid rgb(var(--color-ink) / 0.1)",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    color: "rgb(var(--color-ink))",
+                  }}
+                />
+                <Line type="monotone" dataKey="总资产" stroke="#48634f" strokeWidth={2} dot={false} />
+                {data.platforms.map((platform, idx) => (
+                  <Line
+                    key={platform.id}
+                    type="monotone"
+                    dataKey={platform.name}
+                    stroke={platformColorFor(platform.id, idx)}
+                    strokeWidth={1.5}
+                    strokeDasharray="4 4"
+                    dot={false}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+            <p className="mt-3 text-xs text-ink/45">
+              {trend.rangeLabel} · {trend.points.length} 个节点
+            </p>
+          </>
+        )}
+      </div>
+
+      <div className="space-y-6">
+        <div className="rounded-xl bg-panel p-4 shadow-panel sm:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-semibold text-ink">历史快照</h2>
             <Button
-              type="button"
               variant="secondary"
-              className="size-10 px-0"
-              title={darkMode ? "切换浅色模式" : "切换暗色模式"}
-              onClick={() => setDarkMode((current) => !current)}
+              onClick={() => {
+                setEditingSnapshotId(null);
+                setSnapshotForm({
+                  date: new Date().toISOString().slice(0, 10),
+                  time: "00:00",
+                  note: "",
+                  amounts: Object.fromEntries(
+                    activeAccounts.map((account) => [account.id, "0"]),
+                  ),
+                });
+                setSnapshotOpen(true);
+                setError(null);
+                setMessage(null);
+              }}
             >
-              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-            </Button>
-            <Button variant="secondary" onClick={openDataFileModal}>
-              <Database size={18} />
-              数据文件
-            </Button>
-            <Button onClick={openSnapshotModal}>
-              <FilePlus2 size={18} />
+              <Plus size={18} />
               新建快照
             </Button>
           </div>
-        </header>
 
-        <div className="flex items-center gap-x-4 rounded-md border border-ink/10 bg-subtle px-4 py-2 text-xs">
-          <span className="inline-flex shrink-0 items-center gap-1.5 text-ink/50">
-            <Database size={14} />
-            数据文件:
-          </span>
-          <span
-            className="inline-flex min-w-0 cursor-pointer font-mono text-ink/70 transition-colors hover:text-ink"
-            title={`点击复制: ${databaseStatus?.currentPath ?? ""}`}
-            onClick={() => {
-              const path = databaseStatus?.currentPath ?? "";
-              if (!path) return;
-              navigator.clipboard.writeText(path).then(
-                () => {
-                  setMessage(null);
-                  setError(null);
-                  setToast({ text: "已复制文件路径", kind: "success" });
-                },
-                () => setToast({ text: "复制失败", kind: "error" }),
-              );
-            }}
-          >
-            {(() => {
-              const path = databaseStatus?.currentPath ?? "";
-              const lastSep = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-              const dir = lastSep >= 0 ? path.slice(0, lastSep + 1) : "";
-              const file = lastSep >= 0 ? path.slice(lastSep + 1) : path;
-              return (
-                <>
-                  <span className="min-w-0 truncate">{dir}</span>
-                  <span className="shrink-0">{file}</span>
-                </>
-              );
-            })()}
-          </span>
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-              databaseStatus?.encrypted
-                ? "bg-mint/60 text-moss"
-                : "bg-ink/5 text-ink/45"
-            }`}
-          >
-            {databaseStatus?.encrypted ? "已加密" : "未加密"}
-          </span>
-          {databaseStatus?.encrypted ? (
-            <button
-              type="button"
-              className="shrink-0 rounded px-1.5 py-0.5 text-ink/50 transition-colors hover:bg-ink/10 hover:text-ink"
-              onClick={handleLock}
-            >
-              <Lock size={14} className="inline-block" /> 锁定
-            </button>
-          ) : null}
-        </div>
-
-        <section className="grid gap-4 md:grid-cols-3">
-          <Stat
-            icon={<WalletCards size={20} />}
-            label="总资产"
-            value={money(latest?.totalAsset ?? 0)}
-            helper={`较上次 ${totalDelta}`}
-          />
-          <Stat
-            icon={<WalletCards size={20} />}
-            label="可用资产"
-            value={money(latest?.availableAsset ?? 0)}
-            helper="仅统计流动资产"
-          />
-          <Stat
-            icon={<Plus size={20} />}
-            label="已启用账户"
-            value={`${data.accounts.filter((account) => account.isActive).length}`}
-            helper={`${data.platforms.length} 个平台`}
-            iconTitle="管理平台与账户"
-            onIconClick={openConfigModal}
-          />
-        </section>
-
-        <section className="grid gap-5 lg:grid-cols-[1.45fr_0.9fr]">
-          <div className="rounded-lg border border-ink/10 bg-panel p-5 shadow-panel">
-            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-ink">趋势分析</h2>
-                <p className="mt-1 text-sm text-ink/55">
-                  {trend.visibleCount > 0
-                    ? `${trend.rangeLabel} · ${trend.granularityLabel} · ${trend.visibleCount} 条记录`
-                    : "当前范围暂无快照"}
-                </p>
-              </div>
-              <TimeRangeTabs value={timeRange} onChange={setTimeRange} />
-            </div>
-            {timeRange === "custom" ? (
-              <div className="mb-4 grid gap-3 rounded-md bg-subtle p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start">
-                <div className="space-y-2">
-                  <Label>开始日期</Label>
-                  <DatePicker
-                    value={customRange.start}
-                    onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>结束日期</Label>
-                  <DatePicker
-                    value={customRange.end}
-                    onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="sm:mt-7"
-                  onClick={() =>
-                    setCustomRange({
-                      start: data.summaries[0]?.date ?? customRange.start,
-                      end: latest?.date ?? customRange.end,
-                    })
-                  }
-                >
-                  全部
-                </Button>
-              </div>
-            ) : null}
-            <div className="h-72">
-              {trend.points.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trend.points}>
-                    <CartesianGrid stroke={chartGrid} vertical={false} />
-                    <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: chartText }} />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fill: chartText }}
-                      tickFormatter={(value) => `${value / 10000}万`}
-                    />
+          <div className="mb-6 rounded-xl bg-subtle p-4 sm:p-6">
+            <h3 className="mb-3 text-sm font-medium text-ink/55">资产分布</h3>
+            {lastDate ? (
+              <div className="flex flex-wrap items-start gap-8">
+                <ResponsiveContainer width={160} height={160}>
+                  <PieChart>
+                    <Pie
+                      data={summaries[summaries.length - 1]?.platformAssets.map((pa, idx) => ({
+                        name: pa.platformName,
+                        value: Number(pa.amount),
+                        color: platformColorFor(pa.platformId, idx),
+                      }))}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={70}
+                      innerRadius={40}
+                    >
+                      {summaries[summaries.length - 1]?.platformAssets.map((pa, idx) => (
+                        <Cell key={pa.platformName} fill={platformColorFor(pa.platformId, idx)} />
+                      ))}
+                    </Pie>
                     <Tooltip
-                      contentStyle={tooltipStyle}
-                      labelStyle={{ color: chartStroke }}
-                      itemStyle={{ color: chartStroke }}
-                      labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate ?? ""}
-                      formatter={(value) => money(Number(value))}
+                      contentStyle={{
+                        background: "rgb(var(--color-panel))",
+                        border: "1px solid rgb(var(--color-ink) / 0.1)",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        color: "rgb(var(--color-ink))",
+                      }}
                     />
-                    <Line
-                      type="monotone"
-                      dataKey="总资产"
-                      stroke={chartStroke}
-                      strokeWidth={3}
-                      dot={{ r: 3 }}
-                      activeDot={{ r: 5 }}
-                    />
-                    {data.platforms.map((platform, index) => (
-                      <Line
-                        key={platform.id}
-                        type="monotone"
-                        dataKey={platform.name}
-                        stroke={chartColors[index % chartColors.length]}
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    ))}
-                  </LineChart>
+                  </PieChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center rounded-md bg-subtle text-sm text-ink/50">
-                  这个时间范围内还没有快照
-                </div>
-              )}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-3 text-xs text-ink/65">
-              <span className="inline-flex items-center gap-2">
-                <span className="h-0.5 w-5 rounded bg-ink" />
-                总资产
-              </span>
-              {data.platforms.map((platform, index) => (
-                <span key={platform.id} className="inline-flex items-center gap-2">
-                  <span
-                    className="h-0.5 w-5 rounded"
-                    style={{ backgroundColor: chartColors[index % chartColors.length] }}
-                  />
-                  {platform.name}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-ink/10 bg-panel p-5 shadow-panel">
-            <h2 className="text-lg font-semibold text-ink">资产分布</h2>
-            <p className="mt-1 text-sm text-ink/55">{latest?.date ?? "暂无快照"}</p>
-            <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={distribution} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96}>
-                    {distribution.map((entry, index) => (
-                      <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    labelStyle={{ color: chartStroke }}
-                    itemStyle={{ color: chartStroke }}
-                    formatter={(value) => money(Number(value))}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
-          <div className="rounded-lg border border-ink/10 bg-panel p-5 shadow-panel">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-ink">历史快照</h2>
-                <p className="mt-1 text-sm text-ink/55">最近记录，汇总值实时计算</p>
-              </div>
-              <div className="flex size-10 items-center justify-center rounded-md bg-mint text-moss">
-                <History size={20} />
-              </div>
-            </div>
-            <div className="mt-4 divide-y divide-ink/10">
-              {recentSummaries.map((summary) => (
-                <div key={summary.snapshotId} className="grid gap-3 py-3 sm:grid-cols-[120px_1fr_1fr_auto]">
-                  <div>
-                    <p className="font-medium text-ink">{summary.date}</p>
-                    <p className="mt-1 text-sm text-ink/45">快照</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-ink/55">总资产</p>
-                    <p className="mt-1 font-semibold text-ink">{money(summary.totalAsset)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-ink/55">可用资产</p>
-                    <p className="mt-1 font-semibold text-moss">{money(summary.availableAsset)}</p>
-                  </div>
-                  <div className="flex items-center gap-2 sm:justify-end">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="size-9 px-0"
-                      title="资产变动分析"
-                      onClick={() => openAnalysisModal(summary)}
-                      disabled={saving}
-                    >
-                      <Calculator size={17} />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="size-9 px-0"
-                      title="编辑快照"
-                      onClick={() => editSnapshot(summary)}
-                      disabled={saving}
-                    >
-                      <Pencil size={17} />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="size-9 px-0 text-coral"
-                      title="删除快照"
-                      onClick={() => removeSnapshot(summary)}
-                      disabled={saving}
-                    >
-                      <Trash2 size={17} />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {recentSummaries.length === 0 ? (
-                <div className="py-8 text-center text-sm text-ink/50">暂无快照</div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-ink/10 bg-panel p-5 shadow-panel">
-            <div className="flex items-center justify-between gap-4">
-              <h2 className="text-lg font-semibold text-ink">账户配置</h2>
-              <Button variant="ghost" className="px-3" onClick={openConfigModal}>
-                <Plus size={18} />
-              </Button>
-            </div>
-            <div className="mt-4 divide-y divide-ink/10">
-              {data.accounts.map((account) => {
-                const platform = data.platforms.find((item) => item.id === account.platformId);
-                return (
-                  <div key={account.id} className="flex items-center justify-between gap-4 py-3">
-                    <div>
-                      <p className="font-medium text-ink">{account.name}</p>
-                      <p className="mt-1 text-sm text-ink/55">{platform?.name}</p>
+                <div className="space-y-2 text-sm">
+                  {summaries[summaries.length - 1]?.platformAssets.map((pa, idx) => (
+                    <div key={pa.platformName} className="flex items-center gap-2">
+                      <span
+                        className="inline-block size-3 rounded-full"
+                        style={{ background: platformColorFor(pa.platformId, idx) }}
+                      />
+                      <span className="text-ink/65">{pa.platformName}</span>
+                      <span className="font-medium text-ink">{money(pa.amount)}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded bg-mint px-2 py-1 text-xs font-medium text-moss">
-                        {accountTypeLabel(account.type)}
-                      </span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-ink/45">暂无快照数据</div>
+            )}
+          </div>
+
+          {summaries.length === 0 ? (
+            <div className="py-10 text-center text-sm text-ink/45">还没有历史快照，点击上方按钮创建第一个。</div>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_120px_120px_100px_100px_120px] gap-3 text-xs font-medium text-ink/45">
+                <span>日期</span>
+                <span>总资产</span>
+                <span>可用资产</span>
+                <span>备注</span>
+                <span>变动分析</span>
+                <span>操作</span>
+              </div>
+              {[...summaries].reverse().map((summary) => {
+                const snapshot = data.snapshots.find((s) => s.id === summary.snapshotId);
+                return (
+                  <div
+                    key={summary.snapshotId}
+                    className="grid grid-cols-[minmax(0,1fr)_120px_120px_100px_100px_120px] items-center gap-3 rounded-lg border border-ink/10 px-4 py-2.5 text-sm"
+                  >
+                    <div className="font-medium text-ink truncate">
+                      {snapshot?.snapshotTime && snapshot.snapshotTime !== "00:00"
+                        ? `${summary.date} ${snapshot.snapshotTime}`
+                        : summary.date}
+                    </div>
+                    <div className="font-medium text-ink">{money(summary.totalAsset)}</div>
+                    <div className="text-ink/65">{money(summary.availableAsset)}</div>
+                    <div className="text-ink/45 truncate" title={snapshot?.note ?? ""}>
+                      {snapshot?.note || "—"}
+                    </div>
+                    <div>
                       <Button
                         variant="ghost"
                         className="size-9 px-0"
-                        title={account.isActive ? "停用账户" : "启用账户"}
-                        onClick={() => toggleAccountActive(account)}
-                        disabled={saving}
+                        title="查看变动分析"
+                        onClick={() => openAnalysisModal(summary)}
                       >
-                        {account.isActive ? <PauseCircle size={18} /> : <PlayCircle size={18} />}
+                        <Calculator size={16} />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        className="size-9 px-0"
+                        title="编辑快照"
+                        onClick={() => editSnapshot(summary)}
+                      >
+                        <Pencil size={16} />
                       </Button>
                       <Button
-                        type="button"
                         variant="ghost"
                         className="size-9 px-0 text-coral"
-                        title="删除无历史账户"
-                        onClick={() => removeAccount(account)}
-                        disabled={saving}
-                      >
-                        <Trash2 size={18} />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <Feedback message={message} error={error} />
-          </div>
-        </section>
-      </div>
-
-      <Modal
-        open={dataFileOpen}
-        title="数据文件"
-        description="当前资产数据保存在本地 SQLite 文件中，可以切换文件或导出备份。"
-        onClose={closeModal}
-      >
-        <div className="space-y-5">
-          <div className="rounded-md border border-ink/10 bg-subtle p-4">
-            <p className="text-sm font-medium text-ink">当前数据库位置</p>
-            <p className="mt-2 break-all font-mono text-xs leading-5 text-ink/65">
-              {dataFileInfo?.currentPath ?? "正在读取..."}
-            </p>
-            <p className="mt-2 text-sm text-ink/65">
-              加密状态:{" "}
-              <span className={databaseStatus?.encrypted ? "font-medium text-moss" : "text-ink/50"}>
-                {databaseStatus?.encrypted ? "已加密" : "未加密"}
-              </span>
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {databaseStatus?.encrypted ? (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    setPasswordChangeOpen(true);
-                    setError(null);
-                  }}
-                  disabled={saving}
-                >
-                  <KeyRound size={18} />
-                  修改密码
-                </Button>
-                <Button type="button" variant="secondary" onClick={handleLock} disabled={saving}>
-                  <Lock size={18} />
-                  锁定
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setPasswordSetupOpen(true);
-                  setError(null);
-                }}
-                disabled={saving}
-              >
-                <Unlock size={18} />
-                设置密码
-              </Button>
-            )}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Button type="button" variant="secondary" onClick={chooseDataFile} disabled={saving}>
-              <FolderOpen size={18} />
-              选择文件
-            </Button>
-            <Button type="button" variant="secondary" onClick={createDataFile} disabled={saving}>
-              <FilePlus2 size={18} />
-              新建文件
-            </Button>
-            <Button type="button" variant="secondary" onClick={exportBackup} disabled={saving}>
-              <Download size={18} />
-              导出备份
-            </Button>
-          </div>
-          <p className="text-sm leading-6 text-ink/55">
-            选择或新建数据文件后，应用会立即切换到该文件，并在下次启动时继续使用它。备份会复制当前数据库文件，不会改变正在使用的数据文件。
-          </p>
-          <Feedback message={message} error={error} />
-        </div>
-      </Modal>
-
-      <Modal
-        open={configOpen}
-        title="平台与账户"
-        description="平台表示钱在哪里，账户是每次快照录入金额的单位。"
-        onClose={closeModal}
-      >
-        <div className="grid gap-6 md:grid-cols-2">
-          <form className="space-y-3" onSubmit={submitPlatform}>
-            <div>
-              <h3 className="font-semibold text-ink">管理平台</h3>
-              <p className="mt-1 text-sm text-ink/55">平台表示钱在哪里，例如支付宝、招商银行、微信。</p>
-            </div>
-            <div className="space-y-2">
-              {data.platforms.map((platform, index) => {
-                const editedName = platformEdits[platform.id] ?? platform.name;
-                const changed = editedName.trim() !== platform.name;
-                return (
-                  <div key={platform.id} className="rounded-md bg-subtle p-2">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={editedName}
-                        aria-label={`${platform.name} 平台名称`}
-                        onChange={(event) =>
-                          setPlatformEdits((current) => ({
-                            ...current,
-                            [platform.id]: event.target.value,
-                          }))
-                        }
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="size-9 shrink-0 px-0"
-                        title="保存平台名称"
-                        onClick={() => savePlatformName(platform.id)}
-                        disabled={saving || !changed}
-                      >
-                        <Check size={16} />
-                      </Button>
-                    </div>
-                    <div className="mt-2 flex items-center justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="size-8 px-0"
-                        title="平台上移"
-                        onClick={() => movePlatformOrder(platform.id, "up")}
-                        disabled={saving || index === 0}
-                      >
-                        <ArrowUp size={16} />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="size-8 px-0"
-                        title="平台下移"
-                        onClick={() => movePlatformOrder(platform.id, "down")}
-                        disabled={saving || index === data.platforms.length - 1}
-                      >
-                        <ArrowDown size={16} />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="size-8 px-0 text-coral"
-                        title="删除无历史平台"
-                        onClick={() => removePlatform(platform.id)}
-                        disabled={saving}
+                        title="删除快照"
+                        onClick={() => removeSnapshot(summary)}
                       >
                         <Trash2 size={16} />
                       </Button>
@@ -1354,185 +988,336 @@ export default function App() {
                   </div>
                 );
               })}
-              {data.platforms.length === 0 ? (
-                <div className="rounded-md bg-subtle px-3 py-6 text-center text-sm text-ink/45">
-                  暂无平台
-                </div>
-              ) : null}
-              <div className="rounded-md bg-subtle p-2">
-                <Label htmlFor="platform-name" className="sr-only">
-                  平台名称
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="platform-name"
-                    value={platformName}
-                    placeholder="新建平台"
-                    onChange={(event) => setPlatformName(event.target.value)}
-                  />
-                  <Button
-                    type="submit"
-                    variant="ghost"
-                    className="size-9 shrink-0 px-0"
-                    title="添加平台"
-                    disabled={saving || !platformName.trim()}
-                  >
-                    <Plus size={16} />
-                  </Button>
-                </div>
-              </div>
             </div>
+          )}
+        </div>
+      </div>
+
+      <Feedback message={message} error={error} />
+
+      <Modal
+        open={dataFileOpen}
+        title="数据文件"
+        description="资产快照数据存储在 SQLite 文件中，可设置密码加密。"
+        onClose={() => setDataFileOpen(false)}
+        footer={null}
+      >
+        <div className="space-y-4">
+          <div className="rounded-md bg-subtle px-3 py-2 text-sm text-ink/65">
+            当前数据文件：{dataFileInfo?.currentPath ?? "加载中..."}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                if (!("__TAURI_INTERNALS__" in window)) return;
+                try {
+                  const { open } = await import("@tauri-apps/plugin-dialog");
+                  const selected = await open({ filters: dataFileFilters, multiple: false });
+                  if (!selected) return;
+                  const nextData = await switchDataFile({ path: selected as string });
+                  setData(nextData);
+                  setLocked(false);
+                  const info = await getDataFileInfo();
+                  setDataFileInfo(info);
+                  const status = await getDatabaseStatus();
+                  setDatabaseStatus(status);
+                  setMessage("数据文件已切换");
+                } catch (err) {
+                  setError(String(err));
+                }
+              }}
+            >
+              <FolderOpen size={18} />
+              打开数据文件
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                if (!("__TAURI_INTERNALS__" in window)) return;
+                try {
+                  const { save } = await import("@tauri-apps/plugin-dialog");
+                  const selected = await save({
+                    filters: dataFileFilters,
+                    defaultPath: "asset-snapshot.db",
+                  });
+                  if (!selected) return;
+                  const info = await backupDataFile({ path: selected as string });
+                  setDataFileInfo(info);
+                  setMessage("备份已导出");
+                } catch (err) {
+                  setError(String(err));
+                }
+              }}
+            >
+              <Download size={18} />
+              导出备份
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                if (!("__TAURI_INTERNALS__" in window)) return;
+                try {
+                  const { save } = await import("@tauri-apps/plugin-dialog");
+                  const selected = await save({
+                    filters: dataFileFilters,
+                    defaultPath: "asset-snapshot.db",
+                  });
+                  if (!selected) return;
+                  const info = await backupDataFile({ path: selected as string });
+                  const nextData = await switchDataFile({ path: (selected as string) });
+                  setData(nextData);
+                  setDataFileInfo(info);
+                  setMessage("已创建并使用新数据文件");
+                } catch (err) {
+                  setError(String(err));
+                }
+              }}
+            >
+              <FilePlus2 size={18} />
+              新建数据文件
+            </Button>
+          </div>
+          <Feedback message={message} error={error} />
+        </div>
+      </Modal>
+
+      <Modal
+        open={configOpen}
+        title="平台与账户"
+        description="管理你的资产平台和账户。"
+        onClose={() => {
+          setConfigOpen(false);
+          setPlatformEdits({});
+          setAccountEdits({});
+        }}
+        footer={null}
+      >
+        <div className="space-y-6">
+          <form className="flex flex-wrap items-end gap-3" onSubmit={submitPlatform}>
+            <div className="min-w-[120px] flex-1">
+              <Label>新建平台</Label>
+              <Input
+                value={platformName}
+                placeholder="平台名称"
+                onChange={(event) => setPlatformName(event.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              {presetColors.map((color, idx) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`size-7 rounded-full border-2 transition-transform hover:scale-110 ${
+                    platformColor === color ? "border-ink scale-110" : "border-transparent"
+                  }`}
+                  style={{ background: color }}
+                  title={presetColorLabels[idx]}
+                  onClick={() => setPlatformColor(color)}
+                />
+              ))}
+              <input
+                type="color"
+                className="ml-1 size-7 cursor-pointer rounded-full border border-ink/15 bg-transparent p-0"
+                value={platformColor || "#000000"}
+                onChange={(event) => setPlatformColor(event.target.value)}
+                title="自定义颜色"
+              />
+            </div>
+            <Button type="submit" variant="secondary" disabled={saving || !platformName.trim()}>
+              <Plus size={16} />
+              添加
+            </Button>
           </form>
 
-          <form className="space-y-3" onSubmit={submitAccount}>
-            <div>
-              <h3 className="font-semibold text-ink">管理账户</h3>
-              <p className="mt-1 text-sm text-ink/55">账户是每次快照录入金额的单位。</p>
-            </div>
-            <div className="max-h-[52vh] space-y-4 overflow-y-auto pr-1">
-              {data.platforms.map((platform) => {
-                const accounts = data.accounts.filter((account) => account.platformId === platform.id);
-                if (accounts.length === 0) return null;
-                return (
-                  <div key={platform.id} className="space-y-2">
-                    <p className="text-xs font-semibold text-ink/50">{platform.name}</p>
-                    {accounts.map((account, index) => {
-                      const editedName = accountEdits[account.id] ?? account.name;
-                      const changed = editedName.trim() !== account.name;
-                      return (
-                        <div key={account.id} className="rounded-md bg-subtle p-2">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              value={editedName}
-                              aria-label={`${account.name} 账户名称`}
-                              onChange={(event) =>
-                                setAccountEdits((current) => ({
-                                  ...current,
-                                  [account.id]: event.target.value,
-                                }))
-                              }
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="size-9 shrink-0 px-0"
-                              title="保存账户名称"
-                              onClick={() => saveAccountName(account.id)}
-                              disabled={saving || !changed}
-                            >
-                              <Check size={16} />
-                            </Button>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                            <span className="rounded bg-mint px-2 py-1 text-xs font-medium text-moss">
-                              {accountTypeLabel(account.type)}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="size-8 px-0"
-                                title="账户上移"
-                                onClick={() => moveAccountOrder(account.id, "up")}
-                                disabled={saving || index === 0}
-                              >
-                                <ArrowUp size={16} />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="size-8 px-0"
-                                title="账户下移"
-                                onClick={() => moveAccountOrder(account.id, "down")}
-                                disabled={saving || index === accounts.length - 1}
-                              >
-                                <ArrowDown size={16} />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="size-8 px-0"
-                                title={account.isActive ? "停用账户" : "启用账户"}
-                                onClick={() => toggleAccountActive(account)}
-                                disabled={saving}
-                              >
-                                {account.isActive ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="size-8 px-0 text-coral"
-                                title="删除无历史账户"
-                                onClick={() => removeAccount(account)}
-                                disabled={saving}
-                              >
-                                <Trash2 size={16} />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-              {data.accounts.length === 0 ? (
-                <div className="rounded-md bg-subtle px-3 py-6 text-center text-sm text-ink/45">
-                  暂无账户
-                </div>
-              ) : null}
-              <div className="space-y-3 rounded-md bg-subtle p-2">
-                <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="account-platform">所属平台</Label>
-                    <ChoiceSelect
-                      value={accountForm.platformId}
-                      placeholder="选择平台"
-                      options={data.platforms.map((platform) => ({
-                        value: String(platform.id),
-                        label: platform.name,
-                      }))}
-                      onChange={(value) => setAccountForm((current) => ({ ...current, platformId: value }))}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="account-type">账户类型</Label>
-                    <ChoiceSelect
-                      value={accountForm.type}
-                      options={accountTypeOptions}
-                      onChange={(value) =>
-                        setAccountForm((current) => ({ ...current, type: value as AccountType }))
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="account-name" className="sr-only">
-                    账户名称
-                  </Label>
-                  <Input
-                    id="account-name"
-                    value={accountForm.name}
-                    placeholder="新建账户，例如余额 / 理财 / 信用卡"
-                    onChange={(event) =>
-                      setAccountForm((current) => ({ ...current, name: event.target.value }))
-                    }
+          <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+            {platformGroups.map(({ platform, accounts }, pIdx) => (
+              <div key={platform.id} className="rounded-lg bg-subtle p-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <span
+                    className="inline-block size-3 rounded-full shrink-0"
+                    style={{ background: platformColorFor(platform.id, pIdx) }}
                   />
-                  <Button
-                    type="submit"
-                    variant="ghost"
-                    className="size-9 shrink-0 px-0"
-                    title="添加账户"
-                    disabled={saving || !accountForm.platformId || !accountForm.name.trim()}
-                  >
-                    <Plus size={16} />
-                  </Button>
+                  <span className="font-semibold text-ink">{platform.name}</span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      className="size-7 px-0"
+                      title="上移"
+                      onClick={() => movePlatformOrder(platform.id, "up")}
+                      disabled={saving}
+                    >
+                      <ArrowUp size={14} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="size-7 px-0"
+                      title="下移"
+                      onClick={() => movePlatformOrder(platform.id, "down")}
+                      disabled={saving}
+                    >
+                      <ArrowDown size={14} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="size-7 px-0 text-coral"
+                      title="删除平台"
+                      onClick={() => removePlatform(platform.id)}
+                      disabled={saving}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                  <div className="ml-auto flex items-center gap-1">
+                    {presetColors.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`size-4 rounded-full border transition-transform hover:scale-125 ${
+                          (platform.color || platformColorDefaults[pIdx % platformColorDefaults.length]) === color
+                            ? "border-ink/50 scale-125"
+                            : "border-transparent"
+                        }`}
+                        style={{ background: color }}
+                        title={presetColorLabels[presetColors.indexOf(color)]}
+                        onClick={() => savePlatformColor(platform.id, color)}
+                      />
+                    ))}
+                  </div>
                 </div>
+                <div className="mb-1">
+                  <Input
+                    value={platformEdits[platform.id] ?? platform.name}
+                    placeholder="编辑平台名称"
+                    onChange={(event) =>
+                      setPlatformEdits((current) => ({ ...current, [platform.id]: event.target.value }))
+                    }
+                    onBlur={() => savePlatformName(platform.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") savePlatformName(platform.id);
+                    }}
+                  />
+                </div>
+                {accounts.length === 0 ? (
+                  <p className="py-2 text-xs text-ink/35">暂无账户</p>
+                ) : (
+                  <div className="ml-4 space-y-1.5">
+                    {accounts.map((account) => (
+                      <div key={account.id} className="flex items-center gap-2 rounded-md p-1.5">
+                        <div className="flex-1">
+                          <Input
+                            value={accountEdits[account.id] ?? account.name}
+                            placeholder="账户名称"
+                            onChange={(event) =>
+                              setAccountEdits((current) => ({
+                                ...current,
+                                [account.id]: event.target.value,
+                              }))
+                            }
+                            onBlur={() => saveAccountName(account.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") saveAccountName(account.id);
+                            }}
+                          />
+                        </div>
+                        <ChoiceSelect
+                          value={account.type}
+                          options={accountTypeOptions}
+                          onChange={(value) => changeAccountType(account.id, value)}
+                        />
+                        <Button
+                          variant="ghost"
+                          className="size-8 px-0"
+                          title={account.isActive ? "停用" : "启用"}
+                          onClick={() => toggleAccountActive(account)}
+                          disabled={saving}
+                        >
+                          {account.isActive ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="size-7 px-0"
+                          title="上移"
+                          onClick={() => moveAccountOrder(account.id, "up")}
+                          disabled={saving}
+                        >
+                          <ArrowUp size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="size-7 px-0"
+                          title="下移"
+                          onClick={() => moveAccountOrder(account.id, "down")}
+                          disabled={saving}
+                        >
+                          <ArrowDown size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="size-7 px-0 text-coral"
+                          title="删除账户"
+                          onClick={() => removeAccount(account)}
+                          disabled={saving}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+            ))}
+          </div>
+
+          <form className="flex flex-wrap items-end gap-3" onSubmit={submitAccount}>
+            <div className="min-w-[100px]">
+              <Label>平台</Label>
+              <select
+                className="w-full rounded-md border border-ink/10 bg-panel px-3 py-2 text-sm text-ink outline-none"
+                value={accountForm.platformId}
+                onChange={(event) =>
+                  setAccountForm((current) => ({ ...current, platformId: event.target.value }))
+                }
+              >
+                <option value="" disabled>
+                  选择平台
+                </option>
+                {data.platforms.map((platform) => (
+                  <option key={platform.id} value={String(platform.id)}>
+                    {platform.name}
+                  </option>
+                ))}
+              </select>
             </div>
+            <div className="min-w-[100px] flex-1">
+              <Label>账户名称</Label>
+              <Input
+                value={accountForm.name}
+                placeholder="新账户"
+                onChange={(event) =>
+                  setAccountForm((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+            </div>
+            <div className="min-w-[120px]">
+              <Label>类型</Label>
+              <ChoiceSelect
+                value={accountForm.type}
+                options={accountTypeOptions}
+                onChange={(value) => setAccountForm((current) => ({ ...current, type: value }))}
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="secondary"
+              disabled={saving || !accountForm.platformId || !accountForm.name.trim()}
+            >
+              <Plus size={16} />
+              添加
+            </Button>
           </form>
+          <Feedback message={message} error={error} />
         </div>
-        <Feedback message={message} error={error} />
       </Modal>
 
       <Modal
@@ -1552,12 +1337,24 @@ export default function App() {
         }
       >
         <form id="snapshot-form" className="space-y-5" onSubmit={submitSnapshot}>
-          <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
+          <div className="grid gap-4 sm:grid-cols-[140px_90px_1fr]">
             <div className="space-y-2">
               <Label htmlFor="snapshot-date">日期</Label>
               <DatePicker
                 value={snapshotForm.date}
                 onChange={(value) => setSnapshotForm((current) => ({ ...current, date: value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="snapshot-time">时间</Label>
+              <input
+                id="snapshot-time"
+                type="time"
+                value={snapshotForm.time}
+                className="w-full rounded-md border border-ink/10 bg-panel px-3 py-2 text-sm text-ink outline-none"
+                onChange={(event) =>
+                  setSnapshotForm((current) => ({ ...current, time: event.target.value }))
+                }
               />
             </div>
             <div className="space-y-2">
@@ -1632,10 +1429,10 @@ export default function App() {
         open={analysisOpen}
         title="资产变动分析"
         description="解释两次快照之间的重要收入与支出，不记录完整流水。"
-        onClose={closeModal}
+        onClose={closeAnalysisModal}
         footer={
           <>
-            <Button type="button" variant="secondary" onClick={closeModal}>
+            <Button type="button" variant="secondary" onClick={closeAnalysisModal}>
               关闭
             </Button>
             <Button
@@ -1670,27 +1467,23 @@ export default function App() {
             </div>
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-md border border-ink/10 p-3">
-                  <p className="text-sm text-ink/55">已解释金额</p>
-                  <p className="mt-1 font-semibold text-ink">{signedAmount(analysisExplained)}</p>
-                </div>
-                <div className="rounded-md border border-ink/10 p-3">
-                  <p className="text-sm text-ink/55">未解释金额</p>
-                  <p className="mt-1 font-semibold text-coral">{signedAmount(analysisGap)}</p>
-                </div>
-                <div className="flex items-center">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="w-full"
-                    onClick={autofillAnalysisGap}
-                    disabled={analysisGap === 0}
-                  >
-                    <Sparkles size={18} />
-                    自动补足差额
-                  </Button>
-                </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {analysisGap > 0 ? (
+                  <div className="rounded-md border border-ink/10 p-3">
+                    <p className="text-sm text-ink/55">未解释收入</p>
+                    <p className="mt-1 font-semibold text-moss">{signedAmount(analysisGap)}</p>
+                  </div>
+                ) : analysisGap < 0 ? (
+                  <div className="rounded-md border border-ink/10 p-3">
+                    <p className="text-sm text-ink/55">未解释支出</p>
+                    <p className="mt-1 font-semibold text-coral">{signedAmount(analysisGap)}</p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-ink/10 p-3">
+                    <p className="text-sm text-ink/55">未解释金额</p>
+                    <p className="mt-1 font-semibold text-ink">0</p>
+                  </div>
+                )}
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -1699,7 +1492,6 @@ export default function App() {
                   type="income"
                   items={analysisItems}
                   saving={saving}
-                  onAdd={() => addAnalysisItem("income")}
                   onChange={updateAnalysisItem}
                   onRemove={removeAnalysisItem}
                 />
@@ -1708,10 +1500,32 @@ export default function App() {
                   type="expense"
                   items={analysisItems}
                   saving={saving}
-                  onAdd={() => addAnalysisItem("expense")}
                   onChange={updateAnalysisItem}
                   onRemove={removeAnalysisItem}
                 />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => addAnalysisItem("income")}
+                  disabled={saving}
+                >
+                  <Plus size={16} />
+                  新增收入项目
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => addAnalysisItem("expense")}
+                  disabled={saving}
+                >
+                  <Plus size={16} />
+                  新增支出项目
+                </Button>
               </div>
 
               <div className="space-y-2">
@@ -1767,7 +1581,6 @@ function AnalysisColumn({
   type,
   items,
   saving,
-  onAdd,
   onChange,
   onRemove,
 }: {
@@ -1775,7 +1588,6 @@ function AnalysisColumn({
   type: "income" | "expense";
   items: AnalysisItem[];
   saving: boolean;
-  onAdd: () => void;
   onChange: (index: number, item: AnalysisItem) => void;
   onRemove: (index: number) => void;
 }) {
@@ -1785,78 +1597,20 @@ function AnalysisColumn({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="font-semibold text-ink">{title}</h3>
-        <Button type="button" variant="ghost" className="size-9 px-0" onClick={onAdd} disabled={saving}>
-          <Plus size={16} />
-        </Button>
-      </div>
+      <h3 className="font-semibold text-ink">{title}</h3>
       <div className="max-h-[38vh] space-y-3 overflow-y-auto pr-1">
         {visibleItems.map(({ item, index }) => {
           const total = sumAmounts(item.amounts);
           return (
-            <div key={index} className="rounded-lg border border-ink/10 p-3">
-              <div className="flex items-center gap-2">
-                <Input
-                  value={item.name}
-                  placeholder={type === "income" ? "收入名称" : "支出名称"}
-                  onChange={(event) => onChange(index, { ...item, name: event.target.value })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="size-9 shrink-0 px-0 text-coral"
-                  title="删除项目"
-                  onClick={() => onRemove(index)}
-                  disabled={saving}
-                >
-                  <Trash2 size={16} />
-                </Button>
-              </div>
-              <div className="mt-3 space-y-2">
-                {item.amounts.map((amount, amountIndex) => (
-                  <div key={amountIndex} className="flex items-center gap-2">
-                    <Input
-                      inputMode="decimal"
-                      value={amount}
-                      placeholder="金额"
-                      onChange={(event) => {
-                        const amounts = item.amounts.map((current, currentIndex) =>
-                          currentIndex === amountIndex ? event.target.value : current,
-                        );
-                        onChange(index, { ...item, amounts });
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="size-9 shrink-0 px-0"
-                      title="删除金额"
-                      onClick={() => {
-                        const amounts = item.amounts.filter((_, currentIndex) => currentIndex !== amountIndex);
-                        onChange(index, { ...item, amounts: amounts.length > 0 ? amounts : [""] });
-                      }}
-                      disabled={saving}
-                    >
-                      <X size={16} />
-                    </Button>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between gap-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="px-3"
-                    onClick={() => onChange(index, { ...item, amounts: [...item.amounts, ""] })}
-                    disabled={saving}
-                  >
-                    <Plus size={16} />
-                    金额
-                  </Button>
-                  <p className="text-sm font-medium text-ink/65">合计 {money(total)}</p>
-                </div>
-              </div>
-            </div>
+            <AnalysisItemCard
+              key={index}
+              item={item}
+              itemIndex={index}
+              total={total}
+              saving={saving}
+              onChange={onChange}
+              onRemove={onRemove}
+            />
           );
         })}
         {visibleItems.length === 0 ? (
@@ -1864,6 +1618,123 @@ function AnalysisColumn({
             暂无{type === "income" ? "收入" : "支出"}项目
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function AnalysisItemCard({
+  item,
+  itemIndex,
+  total,
+  saving,
+  onChange,
+  onRemove,
+}: {
+  item: AnalysisItem;
+  itemIndex: number;
+  total: number;
+  saving: boolean;
+  onChange: (index: number, item: AnalysisItem) => void;
+  onRemove: (index: number) => void;
+}) {
+  const nameRef = useRef<HTMLInputElement>(null);
+  const amountRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const addAmount = () => {
+    onChange(itemIndex, { ...item, amounts: [...item.amounts, ""] });
+  };
+
+  const handleAmountChange = (amountIndex: number, value: string) => {
+    const amounts = item.amounts.map((current, currentIndex) =>
+      currentIndex === amountIndex ? value : current,
+    );
+    onChange(itemIndex, { ...item, amounts });
+  };
+
+  const handleAmountBlur = (amountIndex: number) => {
+    if (amountIndex === item.amounts.length - 1 && item.amounts[amountIndex].trim()) {
+      onChange(itemIndex, { ...item, amounts: [...item.amounts, ""] });
+    }
+  };
+
+  const handleAmountKeyDown = (amountIndex: number, e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onChange(itemIndex, { ...item, amounts: [...item.amounts, ""] });
+    }
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      amountRefs.current[0]?.focus();
+    }
+  };
+
+  const removeAmount = (amountIndex: number) => {
+    const amounts = item.amounts.filter((_, currentIndex) => currentIndex !== amountIndex);
+    onChange(itemIndex, { ...item, amounts: amounts.length > 0 ? amounts : [""] });
+  };
+
+  return (
+    <div className="rounded-lg border border-ink/10 p-3">
+      <div className="flex items-center gap-2">
+        <Input
+          ref={nameRef}
+          value={item.name}
+          placeholder={item.type === "income" ? "收入名称" : "支出名称"}
+          onChange={(event) => onChange(itemIndex, { ...item, name: event.target.value })}
+          onKeyDown={handleNameKeyDown}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          className="size-9 shrink-0 px-0 text-coral"
+          title="删除项目"
+          onClick={() => onRemove(itemIndex)}
+          disabled={saving}
+        >
+          <Trash2 size={16} />
+        </Button>
+      </div>
+      <div className="mt-3 space-y-2">
+        {item.amounts.map((amount, amountIndex) => (
+          <div key={amountIndex} className="flex items-center gap-2">
+            <Input
+              ref={(el) => { amountRefs.current[amountIndex] = el; }}
+              inputMode="decimal"
+              value={amount}
+              placeholder="金额"
+              onChange={(event) => handleAmountChange(amountIndex, event.target.value)}
+              onBlur={() => handleAmountBlur(amountIndex)}
+              onKeyDown={(e) => handleAmountKeyDown(amountIndex, e)}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              className="size-9 shrink-0 px-0"
+              title="删除金额"
+              onClick={() => removeAmount(amountIndex)}
+              disabled={saving}
+            >
+              <X size={16} />
+            </Button>
+          </div>
+        ))}
+        <div className="flex items-center justify-between gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            className="px-3"
+            onClick={addAmount}
+            disabled={saving}
+          >
+            <Plus size={16} />
+            金额
+          </Button>
+          <p className="text-sm font-medium text-ink/65">合计 {money(total)}</p>
+        </div>
       </div>
     </div>
   );
@@ -1901,26 +1772,11 @@ function buildTrendData(
     const time = date.getTime();
     return time >= startTime && time <= endTime;
   });
-  const spanDays = Math.max(1, Math.round((endTime - startTime) / dayMs) + 1);
-  const granularity = spanDays <= 90 ? "day" : spanDays <= 366 ? "week" : "month";
-  const latestByBucket = new Map<string, SnapshotSummary>();
-
-  visibleSummaries.forEach((summary) => {
-    const date = parseDate(summary.date);
-    if (!date) return;
-    latestByBucket.set(bucketKey(date, granularity), summary);
-  });
-
-  const bucketedSummaries = [...latestByBucket.values()].sort((left, right) =>
-    left.date.localeCompare(right.date),
-  );
 
   return {
-    points: bucketedSummaries.map((summary) => trendPoint(summary, granularity)),
+    points: visibleSummaries.map((summary) => trendPoint(summary)),
     visibleCount: visibleSummaries.length,
     rangeLabel: `${formatDate(bounds.start)} 至 ${formatDate(bounds.end)}`,
-    granularityLabel:
-      granularity === "day" ? "按日展示" : granularity === "week" ? "按周聚合" : "按月聚合",
   };
 }
 
@@ -1956,39 +1812,16 @@ function normalizeBounds(start: Date, end: Date) {
   return { start: normalizedEnd, end: normalizedStart };
 }
 
-function trendPoint(summary: SnapshotSummary, granularity: "day" | "week" | "month"): TrendPoint {
+function trendPoint(summary: SnapshotSummary): TrendPoint {
   const date = parseDate(summary.date) ?? today();
   return {
-    date: trendLabel(date, granularity),
+    date: `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`,
     fullDate: summary.date,
     总资产: Number(summary.totalAsset),
     ...Object.fromEntries(
       summary.platformAssets.map((item) => [item.platformName, Number(item.amount)]),
     ),
   };
-}
-
-function trendLabel(date: Date, granularity: "day" | "week" | "month") {
-  if (granularity === "month") {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  }
-  if (granularity === "week") {
-    return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}周`;
-  }
-  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function bucketKey(date: Date, granularity: "day" | "week" | "month") {
-  if (granularity === "month") {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  }
-  if (granularity === "week") {
-    const weekStart = new Date(date);
-    const day = weekStart.getDay() || 7;
-    weekStart.setDate(weekStart.getDate() - day + 1);
-    return formatDate(weekStart);
-  }
-  return formatDate(date);
 }
 
 function accountTypeLabel(type: AccountType) {
@@ -2040,7 +1873,7 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function buildAnalysisDescription(items: AnalysisItem[], assetChange: number) {
+function buildAnalysisDescription(items: AnalysisItem[], assetChange: number, gap: number) {
   const parts = normalizeAnalysisItems(items)
     .map((item) => ({
       name: item.name,
@@ -2049,6 +1882,12 @@ function buildAnalysisDescription(items: AnalysisItem[], assetChange: number) {
     .filter((item) => item.amount !== 0)
     .sort((left, right) => Math.abs(right.amount) - Math.abs(left.amount))
     .map((item) => `${item.name}${formatPlainMoney(item.amount)}元`);
+
+  if (gap > 0) {
+    parts.push(`其余收入${formatPlainMoney(gap)}元`);
+  } else if (gap < 0) {
+    parts.push(`其余支出${formatPlainMoney(Math.abs(gap))}元`);
+  }
 
   const summary =
     assetChange >= 0
@@ -2063,3 +1902,4 @@ function formatPlainMoney(value: number) {
     maximumFractionDigits: 2,
   });
 }
+

@@ -1,6 +1,6 @@
 import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from "@headlessui/react";
 import type { PropsWithChildren, ReactNode } from "react";
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 
 type ModalProps = PropsWithChildren<{
   open: boolean;
@@ -11,6 +11,13 @@ type ModalProps = PropsWithChildren<{
 }>;
 
 export function Modal({ open, title, description, footer, onClose, children }: ModalProps) {
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = ""; };
+    }
+  }, [open]);
+
   return (
     <Transition appear show={open} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
@@ -37,7 +44,7 @@ export function Modal({ open, title, description, footer, onClose, children }: M
               leaveFrom="translate-y-0 opacity-100"
               leaveTo="translate-y-2 opacity-0"
             >
-              <DialogPanel className="w-full max-w-2xl rounded-lg border border-ink/10 bg-panel shadow-panel">
+              <DialogPanel className="w-full max-w-2xl lg:max-w-3xl xl:max-w-4xl rounded-lg border border-ink/10 bg-panel shadow-panel">
                 <div className="border-b border-ink/10 p-5">
                   <DialogTitle className="text-lg font-semibold text-ink">{title}</DialogTitle>
                   {description ? <p className="mt-1 text-sm text-ink/55">{description}</p> : null}
