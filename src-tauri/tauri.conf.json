@@ -29,9 +29,6 @@
     "icon": [
       "icons/icon.png"
     ],
-    "windows": {
-      "webviewInstallMode": "downloadBootstrapper"
-    },
     "fileAssociations": [
       {
         "ext": [
