@@ -1,12 +1,12 @@
 import { Tab } from "@headlessui/react";
 import { cn } from "../lib/utils";
 
-export type TimeRangeKey = "3m" | "1y" | "3y" | "custom";
+export type TimeRangeKey = "1y" | "3y" | "5y" | "custom";
 
 const ranges: Array<{ value: TimeRangeKey; label: string }> = [
-  { value: "3m", label: "最近3个月" },
   { value: "1y", label: "最近1年" },
   { value: "3y", label: "最近3年" },
+  { value: "5y", label: "最近5年" },
   { value: "custom", label: "自定义" },
 ];
 

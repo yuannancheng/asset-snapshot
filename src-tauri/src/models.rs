@@ -140,6 +140,7 @@ pub struct DashboardData {
     pub accounts: Vec<Account>,
     pub snapshots: Vec<Snapshot>,
     pub summaries: Vec<SnapshotSummary>,
+    pub analyses: Vec<SnapshotAnalysis>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -317,6 +318,12 @@ pub struct BackupDataFileInput {
     pub path: String,
 }
 
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAndSwitchDataFileInput {
+    pub path: String,
+}
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetPasswordInput {

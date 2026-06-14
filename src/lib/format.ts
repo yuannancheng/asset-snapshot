@@ -12,3 +12,23 @@ export function signedAmount(value: string | number) {
   const prefix = numberValue > 0 ? "+" : "";
   return `${prefix}${money(numberValue)}`;
 }
+
+export function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+export function sumAmounts(amounts: string[]) {
+  return roundMoney(
+    amounts.reduce((total, amount) => {
+      const parsed = Number(amount);
+      return Number.isFinite(parsed) ? total + parsed : total;
+    }, 0),
+  );
+}
+
+export function formatPlainMoney(value: number) {
+  const rounded = roundMoney(value);
+  const fractionDigits = Number.isInteger(rounded) ? 0 : 2;
+  const parts = rounded.toFixed(fractionDigits).split(".");
+  return parts[1] ? `${parts[0]}.${parts[1]}` : parts[0];
+}

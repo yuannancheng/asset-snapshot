@@ -5,7 +5,7 @@ mod models;
 use db::AppDatabase;
 use models::{
     AppError, BackupDataFileInput, ChangePasswordInput, CreateAccountInput, CreatePlatformInput,
-    CreateSnapshotInput, DashboardData, DataFileInfo, DatabaseStatus, DeleteAccountInput,
+    CreateSnapshotInput, CreateAndSwitchDataFileInput, DashboardData, DataFileInfo, DatabaseStatus, DeleteAccountInput,
     DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, MoveAccountInput,
     MovePlatformInput, SetPasswordInput, SnapshotAnalysis, SwitchDataFileInput,
     UnlockInput, UpdateAccountActiveInput, UpdateAccountInput, UpdatePlatformInput, UpdateAccountTypeInput,
@@ -13,7 +13,7 @@ use models::{
 };
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 
 const DATA_FILE_SWITCHED_EVENT: &str = "data-file-switched";
@@ -38,8 +38,9 @@ fn wait_seconds(failed_attempts: u32, last_failed_at: Option<std::time::Instant>
     required.saturating_sub(elapsed) as u32
 }
 
+#[derive(Clone)]
 struct AppState {
-    db_state: Mutex<DatabaseState>,
+    db_state: Arc<Mutex<DatabaseState>>,
 }
 
 fn require_unlocked<'a>(
@@ -90,109 +91,147 @@ fn get_database_status(state: tauri::State<'_, AppState>) -> Result<DatabaseStat
 }
 
 #[tauri::command]
-fn set_database_password(
+async fn set_database_password(
     state: tauri::State<'_, AppState>,
     input: SetPasswordInput,
 ) -> Result<DatabaseStatus, AppError> {
     if input.password.len() < MIN_PASSWORD_LENGTH {
         return Err(AppError::InvalidPassword(MIN_PASSWORD_LENGTH));
     }
-    let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
-    let db = require_unlocked(&mut db_state)?;
-    db.set_password(&input.password)?;
-    Ok(DatabaseStatus {
-        current_path: db.current_path().to_string_lossy().into_owned(),
-        encrypted: true,
-        locked: false,
-        failed_attempts: 0,
-        wait_seconds: 0,
+    let db_state = state.db_state.clone();
+    let password = input.password;
+    tokio::task::spawn_blocking(move || {
+        let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+        let db = require_unlocked(&mut guard)?;
+        db.set_password(&password)?;
+        Ok(DatabaseStatus {
+            current_path: db.current_path().to_string_lossy().into_owned(),
+            encrypted: true,
+            locked: false,
+            failed_attempts: 0,
+            wait_seconds: 0,
+        })
     })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
 }
 
 #[tauri::command]
-fn change_database_password(
+async fn change_database_password(
     state: tauri::State<'_, AppState>,
     input: ChangePasswordInput,
 ) -> Result<(), AppError> {
     if input.new_password.len() < MIN_PASSWORD_LENGTH {
         return Err(AppError::InvalidPassword(MIN_PASSWORD_LENGTH));
     }
-    let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
-    let db = require_unlocked(&mut db_state)?;
-    db.change_password(&input.new_password)?;
-    db.remember_current_path()?;
-    Ok(())
+    let db_state = state.db_state.clone();
+    let new_password = input.new_password;
+    tokio::task::spawn_blocking(move || {
+        let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+        let db = require_unlocked(&mut guard)?;
+        db.change_password(&new_password)?;
+        db.remember_current_path()?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
 }
 
+
 #[tauri::command]
-fn unlock_database(
+async fn remove_database_password(
+    state: tauri::State<'_, AppState>,
+) -> Result<DatabaseStatus, AppError> {
+    let db_state = state.db_state.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+        let db = require_unlocked(&mut guard)?;
+        db.remove_password()?;
+        db.remember_current_path()?;
+        Ok(DatabaseStatus {
+            current_path: db.current_path().to_string_lossy().into_owned(),
+            encrypted: false,
+            locked: false,
+            failed_attempts: 0,
+            wait_seconds: 0,
+        })
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
+}
+#[tauri::command]
+async fn unlock_database(
     state: tauri::State<'_, AppState>,
     input: UnlockInput,
 ) -> Result<DashboardData, AppError> {
-    let db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
+    let db_state = state.db_state.clone();
+    let password = input.password;
+    tokio::task::spawn_blocking(move || {
+        let guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
 
-    let (path, delay_remaining) = match &*db_state {
-        DatabaseState::Locked {
-            path,
-            failed_attempts,
-            last_failed_at,
-        } => {
-            let remaining = wait_seconds(*failed_attempts, *last_failed_at);
-            if remaining > 0 {
-                (path.clone(), remaining)
-            } else {
-                (path.clone(), 0)
+        let (path, delay_remaining) = match &*guard {
+            DatabaseState::Locked {
+                path,
+                failed_attempts,
+                last_failed_at,
+            } => {
+                let remaining = wait_seconds(*failed_attempts, *last_failed_at);
+                if remaining > 0 {
+                    (path.clone(), remaining)
+                } else {
+                    (path.clone(), 0)
+                }
+            }
+            DatabaseState::Unlocked(_) => {
+                return Err(AppError::Validation("数据库已经解锁".into()));
+            }
+        };
+
+        if delay_remaining > 0 {
+            return Err(AppError::WaitRequired(delay_remaining));
+        }
+        drop(guard);
+
+        match AppDatabase::open_path(path.clone(), Some(&password)) {
+            Ok(db) => {
+                let data = db.dashboard_data()?;
+                db.remember_current_path()?;
+                let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+                *guard = DatabaseState::Unlocked(db);
+                Ok(data)
+            }
+            Err(e) => {
+                let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+                if let DatabaseState::Locked {
+                    ref mut failed_attempts,
+                    ref mut last_failed_at,
+                    ..
+                } = &mut *guard
+                {
+                    *failed_attempts += 1;
+                    *last_failed_at = Some(std::time::Instant::now());
+                }
+                if e.to_string().contains("authentication failed") {
+                    let wait = wait_seconds(
+                        if let DatabaseState::Locked {
+                            failed_attempts, ..
+                        } = &*guard
+                        {
+                            *failed_attempts
+                        } else {
+                            0
+                        },
+                        Some(std::time::Instant::now()),
+                    );
+                    Err(AppError::AuthenticationFailedWait(wait))
+                } else {
+                    Err(AppError::Database(e.to_string()))
+                }
             }
         }
-        DatabaseState::Unlocked(_) => {
-            return Err(AppError::Validation("数据库已经解锁".into()));
-        }
-    };
-
-    if delay_remaining > 0 {
-        return Err(AppError::WaitRequired(delay_remaining));
-    }
-    drop(db_state);
-
-    match AppDatabase::open_path(path.clone(), Some(&input.password)) {
-        Ok(db) => {
-            let data = db.dashboard_data()?;
-            db.remember_current_path()?;
-            let mut db_state =
-                state.db_state.lock().map_err(|_| AppError::StateLocked)?;
-            *db_state = DatabaseState::Unlocked(db);
-            Ok(data)
-        }
-        Err(e) => {
-            let mut db_state =
-                state.db_state.lock().map_err(|_| AppError::StateLocked)?;
-            if let DatabaseState::Locked {
-                ref mut failed_attempts,
-                ref mut last_failed_at,
-                ..
-            } = &mut *db_state
-            {
-                *failed_attempts += 1;
-                *last_failed_at = Some(std::time::Instant::now());
-            }
-            if e.to_string().contains("authentication failed") {
-                let wait = wait_seconds(
-                    if let DatabaseState::Locked {
-                        failed_attempts, ..
-                    } = &*db_state
-                    {
-                        *failed_attempts
-                    } else {
-                        0
-                    },
-                    Some(std::time::Instant::now()),
-                );
-                Err(AppError::AuthenticationFailedWait(wait))
-            } else {
-                Err(AppError::Database(e.to_string()))
-            }
-        }
-    }
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
 }
 
 #[tauri::command]
@@ -225,48 +264,78 @@ fn lock_database(
 }
 
 #[tauri::command]
-fn switch_data_file(
+async fn switch_data_file(
     state: tauri::State<'_, AppState>,
     input: SwitchDataFileInput,
 ) -> Result<DashboardData, AppError> {
     let path = normalized_path(&input.path)?;
-    match AppDatabase::open_path(path.clone(), input.password.as_deref()) {
-        Ok(next_db) => {
-            let next_data = next_db.dashboard_data()?;
-            next_db.remember_current_path()?;
-            let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
-            *db_state = DatabaseState::Unlocked(next_db);
-            Ok(next_data)
-        }
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("authentication required")
-                || msg.contains("authentication failed")
-            {
-                let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
-                *db_state = DatabaseState::Locked {
-                    path,
-                    failed_attempts: 0,
-                    last_failed_at: None,
-                };
-                Err(AppError::AuthenticationRequired)
-            } else {
-                Err(AppError::Database(msg))
+    let db_state = state.db_state.clone();
+    let password = input.password.clone();
+    tokio::task::spawn_blocking(move || {
+        match AppDatabase::open_path(path.clone(), password.as_deref()) {
+            Ok(next_db) => {
+                let next_data = next_db.dashboard_data()?;
+                next_db.remember_current_path()?;
+                let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+                *guard = DatabaseState::Unlocked(next_db);
+                Ok(next_data)
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("authentication required")
+                    || msg.contains("authentication failed")
+                {
+                    let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+                    *guard = DatabaseState::Locked {
+                        path,
+                        failed_attempts: 0,
+                        last_failed_at: None,
+                    };
+                    Err(AppError::AuthenticationRequired)
+                } else {
+                    Err(AppError::Database(msg))
+                }
             }
         }
-    }
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
 }
 
 #[tauri::command]
-fn backup_data_file(
+async fn create_and_switch_data_file(
+    state: tauri::State<'_, AppState>,
+    input: CreateAndSwitchDataFileInput,
+) -> Result<DashboardData, AppError> {
+    let path = normalized_path(&input.path)?;
+    let db_state = state.db_state.clone();
+    tokio::task::spawn_blocking(move || {
+        let new_db = AppDatabase::create_blank_at(path)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        let data = new_db.dashboard_data()?;
+        let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+        *guard = DatabaseState::Unlocked(new_db);
+        Ok(data)
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
+}
+
+#[tauri::command]
+async fn backup_data_file(
     state: tauri::State<'_, AppState>,
     input: BackupDataFileInput,
 ) -> Result<DataFileInfo, AppError> {
     let path = normalized_path(&input.path)?;
-    let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
-    let db = require_unlocked(&mut db_state)?;
-    db.backup_to(&path)?;
-    Ok(data_file_info(db))
+    let db_state = state.db_state.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+        let db = require_unlocked(&mut guard)?;
+        db.backup_to(&path)?;
+        Ok(data_file_info(db))
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
 }
 
 #[tauri::command]
@@ -463,7 +532,7 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
-            db_state: Mutex::new(db_state),
+            db_state: Arc::new(Mutex::new(db_state)),
         })
         .invoke_handler(tauri::generate_handler![
             get_dashboard_data,
@@ -472,8 +541,10 @@ pub fn run() {
             set_database_password,
             change_database_password,
             unlock_database,
+            remove_database_password,
             lock_database,
             switch_data_file,
+            create_and_switch_data_file,
             backup_data_file,
             create_platform,
             create_account,

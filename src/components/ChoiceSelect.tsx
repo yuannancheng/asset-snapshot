@@ -1,5 +1,6 @@
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
 import { Check, ChevronDown } from "lucide-react";
+import React, { useCallback, useRef } from "react";
 import { cn } from "../lib/utils";
 
 type ChoiceOption<T extends string> = {
@@ -12,7 +13,6 @@ type ChoiceSelectProps<T extends string> = {
   value: T;
   options: Array<ChoiceOption<T>>;
   placeholder?: string;
-  position?: "auto" | "top";
   onChange: (value: T) => void;
 };
 
@@ -20,24 +20,38 @@ export function ChoiceSelect<T extends string>({
   value,
   options,
   placeholder = "请选择",
-  position = "auto",
   onChange,
 }: ChoiceSelectProps<T>) {
   const selected = options.find((option) => option.value === value);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = React.useState<'bottom' | 'top'>('bottom');
+
+  const checkPosition = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    setAnchor(spaceBelow < 256 ? 'top' : 'bottom');
+  }, []);
 
   return (
     <Listbox value={value} onChange={onChange}>
+      {({ open }) => {
+        if (open) checkPosition();
+        return (
       <div className="relative">
-        <ListboxButton className="flex h-10 w-full items-center justify-between gap-3 rounded-md border border-ink/10 bg-panel px-3 text-left text-sm text-ink outline-none transition hover:bg-mint/40 focus:border-moss focus:ring-2 focus:ring-moss/15">
+        <ListboxButton
+          ref={buttonRef}
+          className="flex h-10 w-full items-center justify-between gap-3 rounded-md border border-ink/10 bg-panel px-3 text-left text-sm text-ink outline-none transition hover:bg-mint/40 focus:border-moss focus:ring-2 focus:ring-moss/15"
+        >
           <span className={selected ? "text-ink" : "text-ink/40"}>
             {selected?.label ?? placeholder}
           </span>
           <ChevronDown size={16} className="shrink-0 text-ink/45" />
         </ListboxButton>
         <ListboxOptions
+          anchor={anchor}
           className={cn(
-            "absolute z-[80] max-h-64 w-full overflow-auto rounded-lg border border-ink/10 bg-panel p-1 shadow-panel outline-none",
-            position === "top" ? "bottom-full mb-1" : "mt-2",
+            "z-[100] max-h-64 w-[var(--button-width)] min-w-[120px] overflow-auto rounded-lg border border-ink/10 bg-panel p-1 shadow-panel outline-none whitespace-nowrap",
           )}
         >
           {options.map((option) => (
@@ -64,6 +78,8 @@ export function ChoiceSelect<T extends string>({
           ))}
         </ListboxOptions>
       </div>
+        );
+      }}
     </Listbox>
   );
 }

@@ -1,5 +1,7 @@
 # 资产快照
 
+[English](README.md)
+
 一款本地优先的个人资产快照与趋势分析工具，基于 Tauri + React 构建。
 
 ## 概览

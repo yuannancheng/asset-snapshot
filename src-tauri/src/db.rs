@@ -42,11 +42,12 @@ impl AppDatabase {
 
         let conn = Connection::open(&path).context("failed to open sqlite database")?;
 
+        conn.execute_batch("PRAGMA cipher_compatibility = 4;")
+            .context("failed to set cipher compatibility")?;
+
         if let Some(pwd) = password {
             conn.execute_batch(&pragma_key_sql(pwd))
                 .context("failed to set database key")?;
-            conn.execute_batch("PRAGMA cipher_compatibility = 4;")
-                .context("failed to set cipher compatibility")?;
         }
 
         // Verify database is readable by checking sqlite_master.
@@ -118,6 +119,10 @@ impl AppDatabase {
         self.conn
             .execute_batch("PRAGMA cipher_compatibility = 4;")
             .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Ensure any leftover attachment from a previous failed attempt is cleaned up
+        let _ = self.conn.execute_batch("DETACH DATABASE encrypted;");
+
         self.conn
             .execute_batch(&format!(
                 "ATTACH DATABASE '{}' AS encrypted KEY '{}';",
@@ -125,12 +130,18 @@ impl AppDatabase {
                 esc_pwd
             ))
             .map_err(|e| AppError::Database(e.to_string()))?;
-        self.conn
+
+        // Perform export and always detach, even on error
+        let export_result = self
+            .conn
             .execute_batch("SELECT sqlcipher_export('encrypted');")
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        self.conn
-            .execute_batch("DETACH DATABASE encrypted;")
-            .map_err(|e| AppError::Database(e.to_string()))?;
+            .map_err(|e| AppError::Database(e.to_string()));
+        let _ = self.conn.execute_batch("DETACH DATABASE encrypted;");
+        // If export failed, clean up the tmp file and propagate the error
+        if let Err(e) = export_result {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e);
+        }
 
         // Rename the encrypted tmp file over the original.
         // On Linux the old inode stays alive until the last fd is closed,
@@ -201,18 +212,85 @@ impl AppDatabase {
         Ok(())
     }
 
-    #[allow(dead_code)]
+
     pub fn remove_password(&mut self) -> Result<(), AppError> {
         if !self.encrypted {
             return Err(AppError::Validation("数据库未加密".into()));
         }
+
+        // Use sqlcipher_export to create a plaintext copy of the encrypted database.
+        // We create an empty plaintext SQLite file first, then ATTACH it without KEY
+        // to avoid the KEY '' ambiguity that SQLCipher rejects.
+        let tmp_path = self
+            .path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(".asset-snapshot-decrypting-tmp");
+
+        // Remove any leftover tmp file and create a fresh empty plaintext database
+        let _ = std::fs::remove_file(&tmp_path);
+        {
+            let tmp_conn = Connection::open(&tmp_path)
+                .map_err(|e| AppError::Database(format!("无法创建临时数据库: {e}")))?;
+            tmp_conn
+                .execute_batch("PRAGMA cipher_compatibility = 4;")
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            // No PRAGMA key set — this is a plaintext database
+        }
+
+        // Ensure any leftover attachment is cleaned up
+        let _ = self.conn.execute_batch("DETACH DATABASE plaintext;");
+
+        // ATTACH the plaintext database with KEY '' to override the encrypted main key
         self.conn
-            .execute_batch("PRAGMA rekey = ''")
+            .execute_batch(&format!(
+                "ATTACH DATABASE '{}' AS plaintext KEY '';",
+                tmp_path.to_string_lossy().replace('\'', "''")
+            ))
             .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Export, always detaching on exit regardless of success or failure
+        let export_result = self
+            .conn
+            .execute_batch("SELECT sqlcipher_export('plaintext');")
+            .map_err(|e| AppError::Database(e.to_string()));
+        let _ = self.conn.execute_batch("DETACH DATABASE plaintext;");
+
+        if let Err(e) = export_result {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e);
+        }
+
+        // Replace the encrypted file with the plaintext copy
+        std::fs::rename(&tmp_path, &self.path).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            AppError::Database(format!("无法替换数据库文件: {e}"))
+        })?;
+
+        // Reopen the decrypted file without a password
+        self.conn = Connection::open(&self.path)
+            .map_err(|e| AppError::Database(format!("无法重新打开数据库: {e}")))?;
+        self.conn
+            .execute_batch("PRAGMA cipher_compatibility = 4;")
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        // Verify database is still readable after decryption
+        self.conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|e| {
+                AppError::Database(format!("解密后数据库验证失败: {e}"))
+            })?;
+
         self.encrypted = false;
         self.remember_current_path()?;
         Ok(())
     }
+
+
 
     pub fn remember_current_path(&self) -> Result<(), AppError> {
         let path = app_config_path()?;
@@ -251,12 +329,74 @@ impl AppDatabase {
         Ok(())
     }
 
+    pub fn create_blank_at(path: PathBuf) -> Result<Self> {
+        if path.exists() {
+            fs::remove_file(&path).with_context(|| {
+                format!("failed to remove existing file at {}", path.display())
+            })?;
+        }
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create directory {}", parent.display())
+            })?;
+        }
+        let db = Self::open_path(path, None)?;
+        db.remember_current_path()
+            .map_err(|e| anyhow::anyhow!("failed to remember path: {e}"))?;
+        Ok(db)
+    }
+
+
+    pub fn all_analyses(&self) -> Result<Vec<SnapshotAnalysis>, AppError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, snapshot_id FROM snapshot_analysis ORDER BY snapshot_id"
+        )?;
+        let analysis_rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })?;
+
+        let mut result = Vec::new();
+        for analysis_row in analysis_rows {
+            let (analysis_id, snapshot_id) = analysis_row?;
+
+            let mut item_stmt = self.conn.prepare(
+                "SELECT id, type, name FROM analysis_items WHERE analysis_id = ?1 ORDER BY sort_order, id"
+            )?;
+            let item_rows = item_stmt.query_map(params![analysis_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?;
+            let item_rows = item_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let items = item_rows
+                .into_iter()
+                .map(|(item_id, item_type, name)| {
+                    Ok(AnalysisItem {
+                        item_type: AnalysisItemType::from_db(&item_type),
+                        name,
+                        amounts: self.analysis_amounts(item_id)?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            result.push(SnapshotAnalysis {
+                snapshot_id,
+                items,
+            });
+        }
+        Ok(result)
+    }
+
     pub fn dashboard_data(&self) -> Result<DashboardData, AppError> {
         Ok(DashboardData {
             platforms: self.platforms()?,
             accounts: self.accounts()?,
             snapshots: self.snapshots()?,
             summaries: self.snapshot_summaries()?,
+            analyses: self.all_analyses()?,
         })
     }
 
@@ -646,13 +786,18 @@ impl AppDatabase {
     }
 
     fn migrate(&self) -> Result<()> {
-        self.conn.execute_batch(
+        Self::migrate_conn(&self.conn)
+    }
+
+    fn migrate_conn(conn: &Connection) -> Result<()> {
+        conn.execute_batch(
             r#"
             PRAGMA foreign_keys = ON;
 
             CREATE TABLE IF NOT EXISTS platforms (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                color TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -670,6 +815,7 @@ impl AppDatabase {
             CREATE TABLE IF NOT EXISTS snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
+                snapshot_time TEXT DEFAULT '00:00',
                 note TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -716,7 +862,7 @@ impl AppDatabase {
         )?;
 
         // Migrations: add columns that may not exist in older databases
-        self.conn.execute_batch(
+        conn.execute_batch(
             r#"
             ALTER TABLE platforms ADD COLUMN color TEXT;
             ALTER TABLE snapshots ADD COLUMN snapshot_time TEXT DEFAULT '00:00';
@@ -740,12 +886,12 @@ impl AppDatabase {
             params!["支付宝", 1],
         )?;
         self.conn.execute(
-            "INSERT INTO platforms (name, sort_order) VALUES (?1, ?2)",
-            params!["招商银行", 2],
+            "INSERT INTO platforms (name, sort_order, color) VALUES (?1, ?2, ?3)",
+            params!["招商银行", 2, "#EB5757"],
         )?;
         self.conn.execute(
-            "INSERT INTO platforms (name, sort_order) VALUES (?1, ?2)",
-            params!["微信", 3],
+            "INSERT INTO platforms (name, sort_order, color) VALUES (?1, ?2, ?3)",
+            params!["微信", 3, "#27AE60"],
         )?;
 
         self.conn.execute(
@@ -1365,8 +1511,7 @@ mod tests {
             date: "2026-06-01".into(), note: None,
             snapshot_time: None,
             items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
-        }).unwrap();
-        let result = db.delete_account(DeleteAccountInput { account_id: accounts[0].id });
+        }).unwrap();        let result = db.delete_account(DeleteAccountInput { account_id: accounts[0].id });
         assert!(result.is_err());
     }
 }

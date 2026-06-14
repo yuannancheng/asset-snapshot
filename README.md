@@ -1,5 +1,7 @@
 # Asset Snapshot
 
+[中文](README.zh-CN.md)
+
 A local-first personal asset snapshot and trend analysis tool built with Tauri + React.
 
 ## Overview

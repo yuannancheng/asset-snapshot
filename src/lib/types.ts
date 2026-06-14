@@ -59,6 +59,7 @@ export type DashboardData = {
   accounts: Account[];
   snapshots: Snapshot[];
   summaries: SnapshotSummary[];
+  analyses: SnapshotAnalysis[];
 };
 
 export type DataFileInfo = {
@@ -85,3 +86,7 @@ export type ChangePasswordInput = {
   newPassword: string;
 };
 
+
+export type CreateAndSwitchDataFileInput = {
+  path: string;
+};

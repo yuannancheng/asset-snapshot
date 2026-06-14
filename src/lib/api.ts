@@ -24,6 +24,7 @@ export async function getDashboardData() {
       accounts: [],
       snapshots: [],
       summaries: [],
+      analyses: [],
     };
   }
 }
@@ -56,6 +57,10 @@ export async function changeDatabasePassword(input: { newPassword: string }) {
   return invokeCommand<void>("change_database_password", { input });
 }
 
+export async function removeDatabasePassword() {
+  return invokeCommand<DatabaseStatus>("remove_database_password");
+}
+
 export async function lockDatabase() {
   return invokeCommand<DatabaseStatus>("lock_database");
 }
@@ -70,6 +75,10 @@ export async function backupDataFile(input: { path: string }) {
 
 export async function createPlatform(input: { name: string }) {
   return invokeCommand<DashboardData>("create_platform", { input });
+}
+
+export async function createAndSwitchDataFile(input: { path: string }) {
+  return invokeCommand<DashboardData>("create_and_switch_data_file", { input });
 }
 
 export async function createAccount(input: {
