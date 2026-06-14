@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "资产快照",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "identifier": "com.asset-snapshot.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -26,10 +26,17 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png"],
+    "icon": [
+      "icons/icon.png"
+    ],
+    "windows": {
+      "webviewInstallMode": "downloadBootstrapper"
+    },
     "fileAssociations": [
       {
-        "ext": ["as"],
+        "ext": [
+          "as"
+        ],
         "name": "Asset Snapshot Data File",
         "description": "资产快照数据文件",
         "mimeType": "application/vnd.asset-snapshot.sqlite3"
