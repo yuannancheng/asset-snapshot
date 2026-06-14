@@ -53,17 +53,27 @@ export function buildAnalysisDescription(items: AnalysisItem[], assetChange: num
 
   const sentences: string[] = [];
 
-  // Change items
-  const parts: string[] = [];
+  // Separate income and expense items
+  const incomeParts: string[] = [];
+  const expenseParts: string[] = [];
   for (const item of normalized) {
-    const label = item.type === "income" ? "收入" : "支出";
-    parts.push(`${item.name}${label}${formatPlainMoney(Math.abs(item.amount))}元`);
+    if (item.type === "income") {
+      incomeParts.push(`${item.name}收入${formatPlainMoney(Math.abs(item.amount))}元`);
+    } else {
+      expenseParts.push(`${item.name}支出${formatPlainMoney(Math.abs(item.amount))}元`);
+    }
   }
-  if (gap !== 0) {
-    parts.push(`其余变动${formatPlainMoney(Math.abs(gap))}元`);
+  // Remaining gap: positive goes to income, negative goes to expense
+  if (gap > 0) {
+    incomeParts.push(`其余收入${formatPlainMoney(gap)}元`);
+  } else if (gap < 0) {
+    expenseParts.push(`其余支出${formatPlainMoney(Math.abs(gap))}元`);
   }
-  if (parts.length > 0) {
-    sentences.push(parts.join("，") + "。");
+  if (incomeParts.length > 0) {
+    sentences.push(incomeParts.join("，") + "。");
+  }
+  if (expenseParts.length > 0) {
+    sentences.push(expenseParts.join("，") + "。");
   }
 
   // Summary sentence

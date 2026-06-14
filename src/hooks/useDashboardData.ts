@@ -27,7 +27,7 @@ import {
   backupDataFile,
   getDataFileInfo,
 } from "../lib/api";
-import type { DashboardData, SnapshotAnalysis } from "../lib/types";
+import type { DashboardData } from "../lib/types";
 
 const DASHBOARD_KEY = ["dashboardData"] as const;
 const DB_STATUS_KEY = ["databaseStatus"] as const;

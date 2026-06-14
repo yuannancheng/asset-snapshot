@@ -2,7 +2,7 @@ import { FormEvent } from "react";
 import {
   ArrowDown,
   ArrowUp,
-  Palette,
+
   PauseCircle,
   PlayCircle,
   Plus,

@@ -1,123 +1,46 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import {
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  ArrowDown,
-  ArrowUp,
   Calculator,
   Database,
-  Download,
-  FilePlus2,
-  FolderOpen,
-  KeyRound,
-  Lock,
-  Moon,
-  Palette,
-  PauseCircle,
-  Pencil,
   PlayCircle,
-  Plus,
-  Sun,
-  Trash2,
   WalletCards,
-  X,
 } from "lucide-react";
-import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "./components/Button";
-import { ChoiceSelect } from "./components/ChoiceSelect";
-import { DatePicker } from "./components/DatePicker";
-import { Input, Label } from "./components/Field";
 import { PathDisplay } from "./components/PathDisplay";
-import { ResizableHeader } from "./components/ResizableHeader";
-import { Modal } from "./components/Modal";
 import { PasswordChangeModal } from "./components/PasswordChangeModal";
 import { PasswordSetupModal } from "./components/PasswordSetupModal";
 import { Stat } from "./components/Stat";
-import { TimeRangeTabs, type TimeRangeKey } from "./components/TimeRangeTabs";
 import { UnlockScreen } from "./components/UnlockScreen";
-import {
-  backupDataFile,
-  createAndSwitchDataFile,
-  changeDatabasePassword,
-  createAccount,
-  createPlatform,
-  createSnapshot,
-  deleteAccount,
-  deletePlatform,
-  deleteSnapshot,
-  getDashboardData,
-  getDataFileInfo,
-  getDatabaseStatus,
-  getSnapshotAnalysis,
-  lockDatabase,
-  removeDatabasePassword,
-  moveAccount,
-  movePlatform,
-  saveSnapshotAnalysis,
-  setDatabasePassword,
-  switchDataFile,
-  unlockDatabase,
-  updateAccount,
-  updateAccountActive,
-  updateAccountType,
-  updatePlatform,
-  updateSnapshot,
-} from "./lib/api";
-import { formatPlainMoney, money, roundMoney, signedAmount, sumAmounts } from "./lib/format";
-import { formatDate, parseDate, startOfDay, today } from "./lib/date";
+import { deleteSnapshot, getSnapshotsPage } from "./lib/api";
+import { money } from "./lib/format";
 import type {
   Account,
-  AccountType,
-  AnalysisItem,
   DashboardData,
   DataFileInfo,
-  DatabaseStatus,
   SnapshotSummary,
-  SnapshotAnalysis,
+  PaginatedSnapshots,
 } from "./lib/types";
+import type { TimeRangeKey } from "./components/TimeRangeTabs";
 import { buildTrendData } from "./lib/chartTransformer";
 import {
-  buildAnalysisDescription,
-  emptyAnalysisItem,
-  explainedAmount,
-  normalizeAnalysisItems,
   previousSummaryFor,
   snapshotAnalysisDesc,
 } from "./lib/assetCalculator";
-import { AnalysisColumn } from "./components/analysis/AnalysisColumn";
 import { useSnapshotForm } from "./hooks/useSnapshotForm";
 import { DashboardHeader } from "./components/dashboard/DashboardHeader";
 import { TrendCharts } from "./components/dashboard/TrendCharts";
 import { DataFileModal } from "./components/datafile/DataFileModal";
+import { AboutModal } from "./components/AboutModal";
 import { ConfigModal } from "./components/config/ConfigModal";
-import { ColorInput } from "./components/platform/ColorInput";
 import { SnapshotModal } from "./components/snapshot/SnapshotModal";
+import { SnapshotHistory } from "./components/dashboard/SnapshotHistory";
 import { AnalysisModal } from "./components/analysis/AnalysisModal";
 import { usePassword } from "./hooks/usePassword";
 import { usePlatformAccounts } from "./hooks/usePlatformAccounts";
 import { useAnalysis } from "./hooks/useAnalysis";
 import { useDashboardData, useDatabaseStatus } from "./hooks/useDashboardData";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import {
-  accountTypeLabel,
-  accountTypeOptions,
-  dataFileFilters,
-  dayMs,
-  platformColorDefaults,
-  presetColorLabels,
-  presetColors,
-} from "./lib/constants";
+import { platformColorDefaults } from "./lib/constants";
 
 
 const MemoStat = memo(Stat);
@@ -132,12 +55,13 @@ export default function App() {
   const queryClient = useQueryClient();
 
   const [configOpen, setConfigOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [dataFileOpen, setDataFileOpen] = useState(false);
-  const [dataFileInfo, setDataFileInfo] = useState<DataFileInfo | null>(null);
+  const [, setDataFileInfo] = useState<DataFileInfo | null>(null);
   const [locked, setLocked] = useState(false);
   const [passwordSetupOpen, setPasswordSetupOpen] = useState(false);
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
-  const [colWidths, setColWidths] = useState([200, 120, 120, 100, 100, 120]);
+  const [colWidths, setColWidths] = useState([100, 120, 120, 120, 180, 120]);
   const [creating, setCreating] = useState(false);
   const [toast, setToast] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -146,6 +70,14 @@ export default function App() {
     start: new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString().slice(0, 10),
     end: new Date().toISOString().slice(0, 10),
   });
+
+
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const [pageData, setPageData] = useState<PaginatedSnapshots>({ snapshots: [], summaries: [], analyses: [], totalCount: 0 });
+  const [pageVersion] = useState(0);
+  const pageLoadingRef = useRef(false);
 
   const showToast = useCallback((text: string, kind: "success" | "error") => {
     setToast({ text, kind });
@@ -166,14 +98,10 @@ export default function App() {
     setPlatformEdits,
     accountEdits,
     setAccountEdits,
-    accountForm,
-    setAccountForm,
     inlineAccountForms,
     setInlineAccountForms,
-    setDefaultPlatformId,
     openConfigModal,
     submitPlatform,
-    submitAccount,
     toggleAccountActive,
     removeAccount,
     removePlatform,
@@ -316,7 +244,6 @@ export default function App() {
 
   const {
     analysisOpen,
-    analysisSnapshotId,
     analysisItems,
     analysisSummary,
     analysisPrevious,
@@ -372,9 +299,20 @@ export default function App() {
     [showToast],
   );
 
+  const totalPages = Math.max(1, Math.ceil(pageData.totalCount / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+
+  useEffect(() => {
+    if (pageLoadingRef.current) return;
+    pageLoadingRef.current = true;
+    getSnapshotsPage({ limit: pageSize, offset: (safePage - 1) * pageSize }).then((data) => {
+      setPageData(data);
+      pageLoadingRef.current = false;
+    });
+  }, [pageSize, safePage, pageVersion]);
+
   const summaries = dashboardData.summaries;
   const lastSummary = summaries[summaries.length - 1];
-  const lastDate = lastSummary?.date ?? "";
   const lastTotalAsset = lastSummary?.totalAsset ?? "0";
   const lastAvailableAsset = lastSummary?.availableAsset ?? "0";
   const enabledAccountCount = activeAccounts.length;
@@ -394,25 +332,16 @@ export default function App() {
     return [...map.values()];
   }, [dashboardData.platforms, dashboardData.accounts]);
 
-  const platformSelectOptions = useMemo(
-    () =>
-      dashboardData.platforms.map((p) => ({
-        value: String(p.id),
-        label: p.name,
-      })),
-    [dashboardData.platforms],
-  );
-
   const historyRows = useMemo(
     () =>
-      [...summaries].reverse().map((summary) => {
-        const snapshot = dashboardData.snapshots.find((s) => s.id === summary.snapshotId);
+      [...pageData.summaries].reverse().map((summary) => {
+        const snapshot = pageData.snapshots.find((s) => s.id === summary.snapshotId);
         const prevSummary = previousSummaryFor(summaries, summary.snapshotId);
-        const summaryAnalysis = dashboardData.analyses.find((a) => a.snapshotId === summary.snapshotId);
+        const summaryAnalysis = pageData.analyses.find((a) => a.snapshotId === summary.snapshotId);
         const analysisDesc = snapshotAnalysisDesc(summary, prevSummary, summaryAnalysis);
         return { summary, snapshot, prevSummary, summaryAnalysis, analysisDesc };
       }),
-    [summaries, dashboardData.snapshots, dashboardData.analyses],
+    [pageData.summaries, pageData.snapshots, pageData.analyses, summaries],
   );
 
   if (loading) {
@@ -449,6 +378,7 @@ export default function App() {
         setPasswordSetupOpen={setPasswordSetupOpen}
         setPasswordChangeOpen={setPasswordChangeOpen}
         handleLock={handleLock}
+        openAboutModal={() => setAboutOpen(true)}
       />
 
       <div className="flex items-center gap-x-4 rounded-md border border-ink/10 bg-subtle px-4 py-2 text-xs">
@@ -507,83 +437,22 @@ export default function App() {
         platformColorFor={platformColorFor}
       />
 
-      {/* History */}
-      <div className="space-y-6">
-        <div className="rounded-xl bg-panel p-4 shadow-panel sm:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-semibold text-ink">历史快照</h2>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                openNewSnapshot();
-              }}
-            >
-              <Plus size={18} />
-              新建快照
-            </Button>
-          </div>
-
-          {historyRows.length === 0 ? (
-            <div className="py-10 text-center text-sm text-ink/45">还没有历史快照，点击上方按钮创建第一个。</div>
-          ) : (
-            <div className="space-y-2 overflow-x-auto">
-              <ResizableHeader
-                labels={["日期", "总资产", "可用资产", "备注", "变动分析", "操作"]}
-                widths={colWidths}
-                onResize={setColWidths}
-              />
-              {historyRows.map(({ summary, snapshot, analysisDesc }) => (
-                <div
-                  key={summary.snapshotId}
-                  className="grid items-center gap-3 rounded-lg border border-ink/10 px-4 py-2.5 text-sm w-max min-w-full"
-                  style={{ gridTemplateColumns: colWidths.map(w => `${w}px`).join(" ") }}
-                >
-                  <div className="font-medium text-ink truncate">
-                    {snapshot?.snapshotTime && snapshot.snapshotTime !== "00:00"
-                      ? `${summary.date} ${snapshot.snapshotTime}`
-                      : summary.date}
-                  </div>
-                  <div className="font-medium text-ink">{money(summary.totalAsset)}</div>
-                  <div className="text-ink/65">{money(summary.availableAsset)}</div>
-                  <div className="text-ink/45 truncate" title={snapshot?.note ?? ""}>
-                    {snapshot?.note || "—"}
-                  </div>
-                  <div className="text-ink/55 truncate" title={analysisDesc}>
-                    {analysisDesc}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      className="size-9 px-0"
-                      title="查看变动分析"
-                      onClick={() => openAnalysisModal(summary)}
-                    >
-                      <Calculator size={16} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="size-9 px-0"
-                      title="编辑快照"
-                      onClick={() => editSnapshot(summary)}
-                    >
-                      <Pencil size={16} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="size-9 px-0 text-coral"
-                      title="删除快照"
-                      onClick={() => removeSnapshot(summary)}
-                    >
-                      <Trash2 size={16} />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
+      <SnapshotHistory
+        pageData={pageData}
+        historyRows={historyRows}
+        colWidths={colWidths}
+        onColWidthsChange={setColWidths}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        currentPage={safePage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        formatMoney={money}
+        onNewSnapshot={openNewSnapshot}
+        onAnalysis={openAnalysisModal}
+        onEdit={editSnapshot}
+        onDelete={removeSnapshot}
+      />
       <DataFileModal
         open={dataFileOpen}
         onClose={() => setDataFileOpen(false)}
@@ -660,6 +529,11 @@ export default function App() {
         updateAnalysisItem={updateAnalysisItem}
         removeAnalysisItem={removeAnalysisItem}
         saving={saving}
+      />
+
+      <AboutModal
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
       />
 
       <PasswordSetupModal

@@ -54,7 +54,7 @@ export function ResizableHeader({ labels, widths, onResize }: ResizableHeaderPro
 
   return (
     <div
-      className="grid gap-3 text-xs font-medium text-ink/45"
+      className="grid gap-3 px-4 text-xs font-medium text-ink/45"
       style={{
         gridTemplateColumns: widths.map((w) => `${w}px`).join(" "),
         userSelect: resize ? "none" : undefined,

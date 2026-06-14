@@ -16,6 +16,7 @@ export function useSnapshotForm({
   setData,
   showToast,
   setSaving,
+  onSnapshotMutated,
 }: {
   activeAccounts: Account[];
   accounts: Account[];
@@ -23,6 +24,7 @@ export function useSnapshotForm({
   setData: (data: DashboardData) => void;
   showToast: (text: string, kind: "success" | "error") => void;
   setSaving: (saving: boolean) => void;
+  onSnapshotMutated?: () => void;
 }) {
   const [snapshotOpen, setSnapshotOpen] = useState(false);
   const [editingSnapshotId, setEditingSnapshotId] = useState<number | null>(null);
@@ -100,6 +102,7 @@ export function useSnapshotForm({
       setSnapshotOpen(false);
       setEditingSnapshotId(null);
       showToast(editingSnapshotId ? "快照已更新" : "快照已保存", "success");
+      onSnapshotMutated?.();
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {

@@ -1,4 +1,4 @@
-import { Database, Lock, Moon, Sun, WalletCards } from "lucide-react";
+import { Database, Info, Lock, Moon, Sun, WalletCards } from "lucide-react";
 import { Button } from "../Button";
 import type { DatabaseStatus } from "../../lib/types";
 
@@ -12,6 +12,7 @@ export function DashboardHeader({
   setPasswordSetupOpen,
   setPasswordChangeOpen,
   handleLock,
+  openAboutModal,
 }: {
   darkMode: boolean;
   setDarkMode: (v: boolean) => void;
@@ -22,19 +23,12 @@ export function DashboardHeader({
   setPasswordSetupOpen: (v: boolean) => void;
   setPasswordChangeOpen: (v: boolean) => void;
   handleLock: () => void;
+  openAboutModal: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h1 className="text-lg font-semibold tracking-tight text-ink">资产快照</h1>
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="ghost"
-          className="size-9 px-0"
-          onClick={() => setDarkMode(!darkMode)}
-          title="切换明暗"
-        >
-          {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-        </Button>
         <Button variant="secondary" onClick={openConfigModal}>
           <WalletCards size={18} />
           平台与账户
@@ -49,6 +43,22 @@ export function DashboardHeader({
             锁定
           </Button>
         ) : null}
+        <Button
+          variant="ghost"
+          className="size-9 px-0"
+          onClick={() => setDarkMode(!darkMode)}
+          title="切换明暗"
+        >
+          {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+        </Button>
+        <Button
+          variant="ghost"
+          className="size-9 px-0"
+          onClick={openAboutModal}
+          title="关于"
+        >
+          <Info size={18} />
+        </Button>
       </div>
     </div>
   );

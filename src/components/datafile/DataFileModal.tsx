@@ -1,4 +1,4 @@
-import { Database, Download, FilePlus2, FolderOpen, KeyRound, Lock } from "lucide-react";
+import { Download, FilePlus2, FolderOpen, KeyRound, Lock } from "lucide-react";
 import { Button } from "../Button";
 import { Modal } from "../Modal";
 import {
@@ -97,7 +97,7 @@ export function DataFileModal({
             onClick={async () => {
               if (!("__TAURI_INTERNALS__" in window)) return;
               try {
-                const { save, confirm } = await import("@tauri-apps/plugin-dialog");
+                const { save } = await import("@tauri-apps/plugin-dialog");
                 const selected = await save({
                   filters: dataFileFilters,
                   defaultPath: currentDir ? `${currentDir}/asset-snapshot.db` : "asset-snapshot.db",

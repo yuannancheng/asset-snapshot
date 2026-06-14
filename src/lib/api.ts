@@ -4,6 +4,7 @@ import type {
   DataFileInfo,
   DatabaseStatus,
   SnapshotAnalysis,
+  PaginatedSnapshots,
 } from "./types";
 
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -26,6 +27,14 @@ export async function getDashboardData() {
       summaries: [],
       analyses: [],
     };
+  }
+
+}
+export async function getSnapshotsPage(input: { limit: number; offset: number }) {
+  try {
+    return await invokeCommand<PaginatedSnapshots>("get_snapshots_page", { input });
+  } catch {
+    return { snapshots: [], summaries: [], analyses: [], totalCount: 0 };
   }
 }
 

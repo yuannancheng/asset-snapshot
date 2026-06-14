@@ -41,6 +41,13 @@ export type SnapshotSummary = {
   }>;
 };
 
+export type PaginatedSnapshots = {
+  snapshots: Snapshot[];
+  summaries: SnapshotSummary[];
+  analyses: SnapshotAnalysis[];
+  totalCount: number;
+};
+
 export type AnalysisItemType = "income" | "expense";
 
 export type AnalysisItem = {

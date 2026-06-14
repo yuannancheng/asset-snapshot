@@ -143,6 +143,22 @@ pub struct DashboardData {
     pub analyses: Vec<SnapshotAnalysis>,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSnapshotsPageInput {
+    pub limit: i64,
+    pub offset: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedSnapshots {
+    pub snapshots: Vec<Snapshot>,
+    pub summaries: Vec<SnapshotSummary>,
+    pub analyses: Vec<SnapshotAnalysis>,
+    pub total_count: i64,
+}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AnalysisItemType {

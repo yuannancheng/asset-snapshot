@@ -4,7 +4,7 @@ use crate::models::{
     CreatePlatformInput, CreateSnapshotInput, DashboardData, DeleteAccountInput,
     DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, MoveAccountInput,
     MoveDirection, MovePlatformInput, Platform, Snapshot, SnapshotAnalysis, SnapshotItem,
-    SnapshotItemForCalc, SnapshotSummary, UpdateAccountActiveInput, UpdateAccountInput,
+    SnapshotItemForCalc, SnapshotSummary, GetSnapshotsPageInput, PaginatedSnapshots, UpdateAccountActiveInput, UpdateAccountInput,
     UpdatePlatformInput, UpdateSnapshotInput, UpdateAccountTypeInput,
 };
 use anyhow::{Context, Result};
@@ -397,6 +397,26 @@ impl AppDatabase {
             snapshots: self.snapshots()?,
             summaries: self.snapshot_summaries()?,
             analyses: self.all_analyses()?,
+        })
+    }
+
+    pub fn get_snapshots_page(&self, input: GetSnapshotsPageInput) -> Result<PaginatedSnapshots, AppError> {
+        let total_count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM snapshots",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let snapshots = self.paginated_snapshots(input.limit, input.offset)?;
+        let summaries = self.paginated_snapshot_summaries(input.limit, input.offset)?;
+        let snapshot_ids: Vec<i64> = snapshots.iter().map(|s| s.id).collect();
+        let analyses = self.paginated_analyses(&snapshot_ids)?;
+
+        Ok(PaginatedSnapshots {
+            snapshots,
+            summaries,
+            analyses,
+            total_count,
         })
     }
 
@@ -1057,6 +1077,109 @@ impl AppDatabase {
                 })
             })
             .collect()
+    }
+
+    fn paginated_snapshots(&self, limit: i64, offset: i64) -> Result<Vec<Snapshot>, AppError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, date, snapshot_time, note FROM snapshots ORDER BY date ASC, id ASC LIMIT ?1 OFFSET ?2")?;
+        let rows = stmt.query_map(params![limit, offset], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+        let snapshots = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+        snapshots
+            .into_iter()
+            .map(|(id, date, snapshot_time, note)| {
+                Ok(Snapshot {
+                    id,
+                    snapshot_time,
+                    date,
+                    note,
+                    items: self.snapshot_items(id)?,
+                })
+            })
+            .collect()
+    }
+
+    fn paginated_snapshot_summaries(&self, limit: i64, offset: i64) -> Result<Vec<SnapshotSummary>, AppError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, date FROM snapshots ORDER BY date ASC, id ASC LIMIT ?1 OFFSET ?2")?;
+        let snapshot_rows = stmt.query_map(params![limit, offset], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let snapshots = snapshot_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+        snapshots
+            .into_iter()
+            .map(|(snapshot_id, date)| {
+                let items = self.snapshot_items_for_calc(snapshot_id)?;
+                let calculated = calculate_snapshot(&items);
+                Ok(SnapshotSummary {
+                    snapshot_id,
+                    date,
+                    total_asset: calculated.total_asset,
+                    available_asset: calculated.available_asset,
+                    platform_assets: calculated.platform_assets,
+                })
+            })
+            .collect()
+    }
+
+    fn paginated_analyses(&self, snapshot_ids: &[i64]) -> Result<Vec<SnapshotAnalysis>, AppError> {
+        if snapshot_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders: Vec<String> = snapshot_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+        let sql = format!(
+            "SELECT id, snapshot_id FROM snapshot_analysis WHERE snapshot_id IN ({}) ORDER BY snapshot_id",
+            placeholders.join(", ")
+        );
+        let params: Vec<&dyn rusqlite::types::ToSql> = snapshot_ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let analysis_rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })?;
+
+        let mut result = Vec::new();
+        for analysis_row in analysis_rows {
+            let (analysis_id, snapshot_id) = analysis_row?;
+
+            let mut item_stmt = self.conn.prepare(
+                "SELECT id, type, name FROM analysis_items WHERE analysis_id = ?1 ORDER BY sort_order, id"
+            )?;
+            let item_rows = item_stmt.query_map(params![analysis_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?;
+            let item_rows = item_rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let items = item_rows
+                .into_iter()
+                .map(|(item_id, item_type, name)| {
+                    Ok(AnalysisItem {
+                        item_type: AnalysisItemType::from_db(&item_type),
+                        name,
+                        amounts: self.analysis_amounts(item_id)?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            result.push(SnapshotAnalysis {
+                snapshot_id,
+                items,
+            });
+        }
+        Ok(result)
     }
 
     fn snapshot_items(&self, snapshot_id: i64) -> Result<Vec<SnapshotItem>> {

@@ -6,8 +6,8 @@ use db::AppDatabase;
 use models::{
     AppError, BackupDataFileInput, ChangePasswordInput, CreateAccountInput, CreatePlatformInput,
     CreateSnapshotInput, CreateAndSwitchDataFileInput, DashboardData, DataFileInfo, DatabaseStatus, DeleteAccountInput,
-    DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, MoveAccountInput,
-    MovePlatformInput, SetPasswordInput, SnapshotAnalysis, SwitchDataFileInput,
+    DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, GetSnapshotsPageInput, MoveAccountInput,
+    MovePlatformInput, PaginatedSnapshots, SetPasswordInput, SnapshotAnalysis, SwitchDataFileInput,
     UnlockInput, UpdateAccountActiveInput, UpdateAccountInput, UpdatePlatformInput, UpdateAccountTypeInput,
     UpdateSnapshotInput, MIN_PASSWORD_LENGTH,
 };
@@ -56,6 +56,16 @@ fn require_unlocked<'a>(
 fn get_dashboard_data(state: tauri::State<'_, AppState>) -> Result<DashboardData, AppError> {
     let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
     require_unlocked(&mut db_state)?.dashboard_data()
+}
+
+#[tauri::command]
+fn get_snapshots_page(
+    state: tauri::State<'_, AppState>,
+    input: GetSnapshotsPageInput,
+) -> Result<PaginatedSnapshots, AppError> {
+    let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
+    let db = require_unlocked(&mut db_state)?;
+    db.get_snapshots_page(input)
 }
 
 #[tauri::command]
@@ -531,11 +541,13 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             db_state: Arc::new(Mutex::new(db_state)),
         })
         .invoke_handler(tauri::generate_handler![
             get_dashboard_data,
+            get_snapshots_page,
             get_data_file_info,
             get_database_status,
             set_database_password,
