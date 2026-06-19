@@ -22,7 +22,10 @@ pub fn calculate_snapshot(items: &[SnapshotItemForCalc]) -> CalculatedSnapshot {
                 amount
             }
             AccountType::AssetNonliquid => amount,
-            AccountType::Debt => -amount,
+            AccountType::Debt => {
+                available_asset -= amount;
+                -amount
+            }
         };
 
         total_asset += signed_for_total;
@@ -91,7 +94,7 @@ mod tests {
         let items = [item(1, "支付宝", AccountType::Debt, "3000.00")];
         let result = calculate_snapshot(&items);
         assert_eq!(result.total_asset, "-3000.00");
-        assert_eq!(result.available_asset, "0");
+        assert_eq!(result.available_asset, "-3000.00");
     }
 
     #[test]
@@ -103,7 +106,7 @@ mod tests {
         ];
         let result = calculate_snapshot(&items);
         assert_eq!(result.total_asset, "13000.00");
-        assert_eq!(result.available_asset, "5000.00");
+        assert_eq!(result.available_asset, "3000.00");
     }
 
     #[test]
@@ -116,7 +119,7 @@ mod tests {
         ];
         let result = calculate_snapshot(&items);
         assert_eq!(result.total_asset, "17000.00");
-        assert_eq!(result.available_asset, "13000.00");
+        assert_eq!(result.available_asset, "12000.00");
         assert_eq!(result.platform_assets.len(), 2);
         let alipay = result.platform_assets.iter().find(|p| p.platform_id == 1).unwrap();
         assert_eq!(alipay.amount, "8000.00");
@@ -148,7 +151,7 @@ mod tests {
         let items = [item(1, "支付宝", AccountType::Debt, "-200.00")];
         let result = calculate_snapshot(&items);
         assert_eq!(result.total_asset, "200.00");
-        assert_eq!(result.available_asset, "0");
+        assert_eq!(result.available_asset, "200.00");
     }
 
     #[test]

@@ -242,9 +242,11 @@ export function ConfigModal({
               ) : (
                 <div className="ml-4 space-y-1.5">
                   {accounts.map((account) => (
-                    <div key={account.id} className="flex items-center gap-2 rounded-md p-1.5">
-                      <div className="flex-1">
+                    <div key={account.id} className={`flex items-center gap-2 rounded-md p-1.5${!account.isActive ? " opacity-50" : ""}`}>
+                      <div className="flex-1 relative">
+                        {!account.isActive && <span className="absolute -top-1.5 left-2 z-10 text-[10px] text-ink/50 bg-panel px-1 rounded">已停用</span>}
                         <Input
+                          disabled={!account.isActive}
                           value={accountEdits[account.id] ?? account.name}
                           placeholder="账户名称"
                           onChange={(event) =>

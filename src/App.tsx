@@ -76,8 +76,13 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
 
   const [pageData, setPageData] = useState<PaginatedSnapshots>({ snapshots: [], summaries: [], analyses: [], totalCount: 0 });
-  const [pageVersion] = useState(0);
+  const [pageVersion, setPageVersion] = useState(0);
   const pageLoadingRef = useRef(false);
+
+  const refreshPage = useCallback(() => {
+    setCurrentPage(1);
+    setPageVersion((v) => v + 1);
+  }, []);
 
   const showToast = useCallback((text: string, kind: "success" | "error") => {
     setToast({ text, kind });
@@ -128,6 +133,17 @@ export default function App() {
       setLocked(true);
     }
   }, [databaseStatus]);
+
+  // Refresh paginated table after database unlock
+  const prevLockedRef = useRef(locked);
+  useEffect(() => {
+    if (prevLockedRef.current && !locked) {
+      setCurrentPage(1);
+      setPageVersion((v) => v + 1);
+    }
+    prevLockedRef.current = locked;
+  }, [locked]);
+
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
@@ -240,6 +256,7 @@ export default function App() {
     setData: (nextData) => queryClient.setQueryData(["dashboardData"], nextData),
     showToast,
     setSaving,
+    onSnapshotMutated: refreshPage,
   });
 
   const {
@@ -289,6 +306,8 @@ export default function App() {
       try {
         const nextData = await deleteSnapshot({ snapshotId: summary.snapshotId });
         queryClient.setQueryData(["dashboardData"], nextData);
+        setCurrentPage(1);
+        setPageVersion((v) => v + 1);
         showToast("快照已删除", "success");
       } catch (reason) {
         showToast(String(reason), "error");

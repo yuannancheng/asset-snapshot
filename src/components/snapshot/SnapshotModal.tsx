@@ -1,4 +1,4 @@
-import { FormEvent } from "react";
+import { FormEvent, useRef } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../Button";
 import { DatePicker } from "../DatePicker";
@@ -39,6 +39,28 @@ export function SnapshotModal({
   platformColorFor: (platformId: number, index: number) => string;
   openConfigModal: () => void;
 }) {
+  const timeRef = useRef<HTMLInputElement>(null);
+  const noteRef = useRef<HTMLInputElement>(null);
+  const amountRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  
+  const lastAccountIdx = snapshotAccounts.length - 1;
+
+  const focusNextAmount = (currentIdx: number) => {
+    const nextAccount = snapshotAccounts[currentIdx + 1];
+    if (!nextAccount) return;
+    const el = amountRefs.current[nextAccount.id];
+    if (!el) return;
+    el.focus();
+    const container = el.closest<HTMLElement>('.overflow-y-auto');
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const bottomGap = containerRect.bottom - elRect.bottom;
+    if (bottomGap < 64) {
+      container.scrollBy({ top: 64 - bottomGap, behavior: 'smooth' });
+    }
+  };
+
   return (
     <Modal
       open={open}
@@ -63,29 +85,49 @@ export function SnapshotModal({
             <DatePicker
               value={snapshotForm.date}
               onChange={(value) => setSnapshotForm((current) => ({ ...current, date: value }))}
+              onEnter={() => timeRef.current?.focus()}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="snapshot-time">时间</Label>
             <input
               id="snapshot-time"
+              ref={timeRef}
               type="time"
               value={snapshotForm.time}
               className="w-full rounded-md border border-ink/10 bg-panel px-3 py-2 text-sm text-ink outline-none"
               onChange={(event) =>
                 setSnapshotForm((current) => ({ ...current, time: event.target.value }))
               }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  noteRef.current?.focus();
+                }
+              }}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="snapshot-note">备注</Label>
             <Input
               id="snapshot-note"
+              ref={noteRef}
               value={snapshotForm.note}
               placeholder="可选"
               onChange={(event) =>
                 setSnapshotForm((current) => ({ ...current, note: event.target.value }))
               }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const firstAccount = snapshotAccounts[0];
+                  if (firstAccount) {
+                    amountRefs.current[firstAccount.id]?.focus();
+                  }
+                }
+              }}
             />
           </div>
         </div>
@@ -111,9 +153,10 @@ export function SnapshotModal({
               </Button>
             </div>
           ) : null}
-          {snapshotAccounts.map((account) => {
+          {snapshotAccounts.map((account, idx) => {
             const platform = platforms.find((item) => item.id === account.platformId);
             const pIdx = platforms.findIndex((p) => p.id === account.platformId);
+            const isLast = idx === lastAccountIdx;
             return (
               <div
                 key={account.id}
@@ -132,7 +175,9 @@ export function SnapshotModal({
                   </div>
                 </div>
                 <Input
+                  selectOnFocus
                   inputMode="decimal"
+                  ref={(el) => { amountRefs.current[account.id] = el; }}
                   value={snapshotForm.amounts[account.id] ?? "0"}
                   onChange={(event) =>
                     setSnapshotForm((current) => ({
@@ -143,6 +188,13 @@ export function SnapshotModal({
                       },
                     }))
                   }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !isLast) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      focusNextAmount(idx);
+                    }
+                  }}
                 />
               </div>
             );

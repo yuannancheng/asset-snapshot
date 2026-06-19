@@ -1,13 +1,32 @@
 /**
- * Parse a "YYYY-MM-DD" string into a Date, returning null for invalid input.
+ * Parse a date string into a Date, returning null for invalid input.
+ *
+ * Accepted formats:
+ *   YYYY-MM-DD, YYYY-M-D, YYYY/MM/DD, YYYY/M/D  (full date)
+ *   MM-DD, M-D, MM/DD, M/D                      (month-day, defaults to current year)
  */
 export function parseDate(value?: string) {
   if (!value) return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
+
+  const currentYear = new Date().getFullYear();
+
+  let year: number;
+  let month: number;
+  let day: number;
+
+  const fullMatch = /^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/.exec(value);
+  if (fullMatch) {
+    year = Number(fullMatch[1]);
+    month = Number(fullMatch[2]);
+    day = Number(fullMatch[3]);
+  } else {
+    const shortMatch = /^(\d{1,2})[-\/](\d{1,2})$/.exec(value);
+    if (!shortMatch) return null;
+    year = currentYear;
+    month = Number(shortMatch[1]);
+    day = Number(shortMatch[2]);
+  }
+
   const date = new Date(year, month - 1, day);
   if (
     date.getFullYear() !== year ||

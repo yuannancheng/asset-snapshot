@@ -8,11 +8,12 @@ import { ChoiceSelect } from "./ChoiceSelect";
 type DatePickerProps = {
   value: string;
   onChange: (value: string) => void;
+  onEnter?: () => void;
 };
 
 const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
 
-export function DatePicker({ value, onChange }: DatePickerProps) {
+export function DatePicker({ value, onChange, onEnter }: DatePickerProps) {
   const selectedDate = parseDate(value) ?? new Date();
   const [inputValue, setInputValue] = useState(value);
   const [touched, setTouched] = useState(false);
@@ -54,9 +55,9 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
     const nextDate = parseDate(nextValue);
     if (!nextDate) return;
     setTouched(false);
-    setInputValue(nextValue);
+    setInputValue(formatDate(nextDate));
     setVisibleMonth(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1));
-    onChange(nextValue);
+    onChange(formatDate(nextDate));
   };
 
   return (
@@ -72,16 +73,39 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
         <input
           className="h-full min-w-0 flex-1 rounded-l-md bg-transparent px-3 outline-none placeholder:text-ink/35"
           value={inputValue}
-          placeholder="YYYY-MM-DD"
+          placeholder="YYYY-MM-DD 或 M-D"
           inputMode="numeric"
           onChange={(event) => {
-            const nextValue = event.target.value;
-            setInputValue(nextValue);
-            if (parseDate(nextValue)) {
-              commitDate(nextValue);
+            setInputValue(event.target.value);
+          }}
+          onFocus={(e) => requestAnimationFrame(() => e.target.select())}
+          onBlur={(event) => {
+            const value = event.target.value;
+            setTouched(true);
+            const date = parseDate(value);
+            if (date) {
+              setTouched(false);
+              setInputValue(formatDate(date));
+              setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+              onChange(formatDate(date));
             }
           }}
-          onBlur={() => setTouched(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.stopPropagation();
+              const value = (event.target as HTMLInputElement).value;
+              setTouched(true);
+              const date = parseDate(value);
+              if (date) {
+                setTouched(false);
+                setInputValue(formatDate(date));
+                setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                onChange(formatDate(date));
+              }
+              onEnter?.();
+            }
+          }}
         />
         <PopoverButton
           type="button"
@@ -90,7 +114,7 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
           <CalendarDays size={16} />
         </PopoverButton>
       </div>
-      {hasError ? <p className="mt-1 text-xs text-coral">日期格式应为 YYYY-MM-DD</p> : null}
+      {hasError ? <p className="mt-1 text-xs text-coral">日期格式如 2024-1-15 或 3-8</p> : null}
       <PopoverPanel className="absolute z-[70] mt-2 w-72 rounded-lg border border-ink/10 bg-panel p-3 shadow-panel">
         {({ close }) => (
           <>
