@@ -47,17 +47,17 @@
     "linux": {
       "deb": {
         "files": {
-          "/usr/share/mime/packages/asset-snapshot.xml": "src-tauri/deb/asset-snapshot.xml"
+          "/usr/share/mime/packages/asset-snapshot.xml": "deb/asset-snapshot.xml"
         },
-        "postInstallScript": "src-tauri/deb/postinst",
-        "postRemoveScript": "src-tauri/deb/postrm"
+        "postInstallScript": "deb/postinst",
+        "postRemoveScript": "deb/postrm"
       },
       "rpm": {
         "files": {
-          "/usr/share/mime/packages/asset-snapshot.xml": "src-tauri/deb/asset-snapshot.xml"
+          "/usr/share/mime/packages/asset-snapshot.xml": "deb/asset-snapshot.xml"
         },
-        "postInstallScript": "src-tauri/rpm/postinst",
-        "postRemoveScript": "src-tauri/rpm/postrm"
+        "postInstallScript": "rpm/postinst",
+        "postRemoveScript": "rpm/postrm"
       }
     }
   }
