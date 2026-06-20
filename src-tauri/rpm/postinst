@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+# Register MIME type for .asdb file association
+if command -v update-mime-database >/dev/null 2>&1; then
+    update-mime-database /usr/share/mime || true
+fi
+
+# Update desktop database so the file manager picks up the new MimeType
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications || true
+fi

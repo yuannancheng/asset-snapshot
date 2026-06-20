@@ -1,3 +1,4 @@
+mod mime;
 mod calculations;
 mod db;
 mod models;
@@ -512,6 +513,10 @@ fn save_snapshot_analysis(
 }
 
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        mime::register_mime_type();
+    }
     let db_state = open_initial_database().expect("failed to open application database");
 
     let mut builder = tauri::Builder::default();
@@ -579,7 +584,7 @@ pub fn run() {
 }
 
 fn open_initial_database() -> Result<DatabaseState, anyhow::Error> {
-    // Check if there's a .as file from command-line args
+    // Check if there's a .asdb file from command-line args
     if let Some(path) = data_file_path_from_args(std::env::args_os()) {
         return open_or_lock_path(path);
     }
@@ -685,7 +690,7 @@ where
         .find(|path| {
             path.extension()
                 .and_then(OsStr::to_str)
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("as"))
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("asdb"))
         })
 }
 
@@ -724,7 +729,7 @@ fn default_database_path_for_startup() -> Result<PathBuf, anyhow::Error> {
     use directories::ProjectDirs;
     let dirs = ProjectDirs::from("com", "asset-snapshot", "asset-snapshot")
         .ok_or_else(|| anyhow::anyhow!("failed to resolve application data directory"))?;
-    Ok(dirs.data_local_dir().join("asset-snapshot.db"))
+    Ok(dirs.data_local_dir().join("asset-snapshot.asdb"))
 }
 
 fn app_config_path() -> Result<PathBuf, anyhow::Error> {

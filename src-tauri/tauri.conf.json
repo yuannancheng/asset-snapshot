@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "asset-snapshot",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "identifier": "com.asset-snapshot.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -37,12 +37,28 @@
     "fileAssociations": [
       {
         "ext": [
-          "as"
+          "asdb"
         ],
         "name": "Asset Snapshot Data File",
         "description": "资产快照数据文件",
         "mimeType": "application/vnd.asset-snapshot.sqlite3"
       }
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/share/mime/packages/asset-snapshot.xml": "src-tauri/deb/asset-snapshot.xml"
+        },
+        "postInstallScript": "src-tauri/deb/postinst",
+        "postRemoveScript": "src-tauri/deb/postrm"
+      },
+      "rpm": {
+        "files": {
+          "/usr/share/mime/packages/asset-snapshot.xml": "src-tauri/deb/asset-snapshot.xml"
+        },
+        "postInstallScript": "src-tauri/rpm/postinst",
+        "postRemoveScript": "src-tauri/rpm/postrm"
+      }
+    }
   }
 }

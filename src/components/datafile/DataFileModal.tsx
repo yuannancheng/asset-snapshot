@@ -100,7 +100,7 @@ export function DataFileModal({
                 const { save } = await import("@tauri-apps/plugin-dialog");
                 const selected = await save({
                   filters: dataFileFilters,
-                  defaultPath: currentDir ? `${currentDir}/asset-snapshot.db` : "asset-snapshot.db",
+                  defaultPath: currentDir ? `${currentDir}/asset-snapshot.asdb` : "asset-snapshot.asdb",
                 });
                 if (!selected) return;
                 const info = await backupDataFile({ path: selected as string });
@@ -122,7 +122,7 @@ export function DataFileModal({
                 const { save, confirm } = await import("@tauri-apps/plugin-dialog");
                 const selected = await save({
                   filters: dataFileFilters,
-                  defaultPath: currentDir ? `${currentDir}/asset-snapshot.db` : "asset-snapshot.db",
+                  defaultPath: currentDir ? `${currentDir}/asset-snapshot.asdb` : "asset-snapshot.asdb",
                 });
                 if (!selected) return;
                 const currentPath = databaseStatus?.currentPath ?? "";

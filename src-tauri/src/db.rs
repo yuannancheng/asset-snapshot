@@ -1321,7 +1321,7 @@ fn validate_analysis_items(items: &[AnalysisItem]) -> Result<(), AppError> {
 
 #[allow(dead_code)]
 fn default_database_path() -> Result<PathBuf> {
-    Ok(app_data_dir()?.join("asset-snapshot.db"))
+    Ok(app_data_dir()?.join("asset-snapshot.asdb"))
 }
 
 #[allow(dead_code)]

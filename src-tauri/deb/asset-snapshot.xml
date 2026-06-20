@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.asset-snapshot.sqlite3">
+    <comment>Asset Snapshot data file</comment>
+    <comment xml:lang="zh-CN">资产快照数据文件</comment>
+    <glob pattern="*.asdb"/>
+    <magic priority="50">
+      <match type="string" value="SQLite format 3" offset="0"/>
+    </magic>
+  </mime-type>
+</mime-info>
+
