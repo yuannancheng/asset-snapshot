@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "sync-version": "node scripts/sync-version.mjs",
-    "version": "npm run sync-version"
+    "version": "npm run sync-version && git add src-tauri/tauri.conf.json src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
