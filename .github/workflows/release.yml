@@ -16,12 +16,16 @@ jobs:
         include:
           - platform: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
           - platform: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
+            bundles: deb,appimage
           - platform: macos-latest
             target: aarch64-apple-darwin
+            bundles: dmg
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
+            bundles: nsis
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -54,12 +58,6 @@ jobs:
             libssl-dev \
             libgtk-3-dev
 
-      - name: Enable .NET Framework 3.5 (WiX v3 requirement)
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -NoRestart
-
       - name: Sync tauri.conf.json version from tag
         shell: bash
         run: |
@@ -82,4 +80,4 @@ jobs:
           releaseBody: "See the assets to download and install this version."
           releaseDraft: false
           prerelease: false
-
+          args: --bundles ${{ matrix.bundles }}
