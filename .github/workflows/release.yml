@@ -64,9 +64,10 @@ jobs:
         id: notes
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NOTES_FILE: ${{ runner.temp }}/release-notes.md
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname | grep -v "${{ github.ref_name }}" | head -1)
+          PREV_TAG=$(git tag --sort=-v:refname | grep -vFx "${{ github.ref_name }}" | head -1)
           REPO="${{ github.repository }}"
           TAG="${{ github.ref_name }}"
 
