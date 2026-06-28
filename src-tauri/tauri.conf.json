@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "资产快照",
+  "productName": "asset-snapshot",
   "mainBinaryName": "asset-snapshot",
   "version": "0.2.7",
   "identifier": "com.asset-snapshot.desktop",

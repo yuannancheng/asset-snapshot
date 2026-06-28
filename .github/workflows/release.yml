@@ -85,13 +85,20 @@ jobs:
             echo "## Changes"
             echo ""
 
-            while IFS= read -r sha; do
-              [ -z "$sha" ] && continue
-              SUBJECT=$(git log -1 --pretty=format:"%s" "$sha")
-              SHORT=$(git log -1 --pretty=format:"%h" "$sha")
-              LOGIN=$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.login // .commit.author.name' 2>/dev/null || git log -1 --pretty=format:"%an" "$sha")
-              echo "- ${SUBJECT} ([${SHORT}](https://github.com/${REPO}/commit/${sha})) by @${LOGIN}"
-            done <<< "$SHAS"
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+            SUBJECT=$(git log -1 --pretty=format:"%s" "$sha")
+            SHORT=$(git log -1 --pretty=format:"%h" "$sha")
+            LOGIN=$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.login // empty' 2>/dev/null)
+            if [ -z "$LOGIN" ]; then
+              AUTHOR_EMAIL=$(git log -1 --pretty=format:"%ae" "$sha")
+              LOGIN=$(gh api "search/users?q=${AUTHOR_EMAIL}+in:email" --jq '.items[0].login // empty' 2>/dev/null)
+            fi
+            if [ -z "$LOGIN" ]; then
+              LOGIN=$(git log -1 --pretty=format:"%an" "$sha")
+            fi
+            echo "- ${SUBJECT} ([${SHORT}](https://github.com/${REPO}/commit/${sha})) by @${LOGIN}"
+          done <<< "$SHAS"
 
             if [ -n "$PREV_TAG" ]; then
               echo ""
