@@ -30,6 +30,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -58,6 +60,32 @@ jobs:
             libssl-dev \
             libgtk-3-dev
 
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "${{ github.ref_name }}" | head -1)
+          REPO="${{ github.repository }}"
+          TAG="${{ github.ref_name }}"
+
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"[%h](https://github.com/${REPO}/commit/%H) %s by @%an" --no-merges)
+          else
+            COMMITS=$(git log --pretty=format:"[%h](https://github.com/${REPO}/commit/%H) %s by @%an" --no-merges "${PREV_TAG}..HEAD")
+          fi
+
+          if [ -n "$COMMITS" ]; then
+            {
+              echo "$COMMITS"
+              if [ -n "$PREV_TAG" ]; then
+                echo ""
+                echo "Full Changelog: [${PREV_TAG}...${TAG}](https://github.com/${REPO}/compare/${PREV_TAG}...${TAG})"
+              fi
+            } > /tmp/release-notes.md
+          else
+            echo "Release $TAG" > /tmp/release-notes.md
+          fi
+
       - name: Sync tauri.conf.json version from tag
         shell: bash
         run: |
@@ -77,7 +105,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "资产快照 v__VERSION__"
-          releaseBody: "See the assets to download and install this version."
           releaseDraft: false
           prerelease: false
+          body_path: /tmp/release-notes.md
           args: --bundles ${{ matrix.bundles }}

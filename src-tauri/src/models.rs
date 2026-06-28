@@ -290,6 +290,13 @@ pub struct UpdateAccountTypeInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdateAccountPlatformInput {
+    pub account_id: i64,
+    pub platform_id: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MoveAccountInput {
     pub account_id: i64,
     pub direction: MoveDirection,

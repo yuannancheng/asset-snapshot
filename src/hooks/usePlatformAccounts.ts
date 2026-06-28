@@ -9,6 +9,7 @@ import {
   movePlatform,
   updateAccount,
   updateAccountActive,
+  updateAccountPlatform,
   updateAccountType,
   updatePlatform,
 } from "../lib/api";
@@ -231,6 +232,19 @@ export function usePlatformAccounts({
       setSaving(false);
     }
   };
+  const changeAccountPlatform = async (accountId: number, platformId: number) => {
+    setSaving(true);
+    try {
+      const nextData = await updateAccountPlatform({ accountId, platformId });
+      setData(nextData);
+      showToast("账户已迁移", "success");
+    } catch (reason) {
+      showToast(String(reason), "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
 
   const moveAccountOrder = async (accountId: number, direction: "up" | "down") => {
     setSaving(true);
@@ -294,6 +308,7 @@ export function usePlatformAccounts({
     movePlatformOrder,
     saveAccountName,
     changeAccountType,
+    changeAccountPlatform,
     moveAccountOrder,
     inlineAddAccount,
   };

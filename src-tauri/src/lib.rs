@@ -10,7 +10,7 @@ use models::{
     CreateSnapshotInput, CreateAndSwitchDataFileInput, DashboardData, DataFileInfo, DatabaseStatus, DeleteAccountInput,
     DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, GetSnapshotsPageInput, MoveAccountInput,
     MovePlatformInput, PaginatedSnapshots, SetPasswordInput, SnapshotAnalysis, SwitchDataFileInput,
-    UnlockInput, UpdateAccountActiveInput, UpdateAccountInput, UpdatePlatformInput, UpdateAccountTypeInput,
+    UnlockInput, UpdateAccountActiveInput, UpdateAccountInput, UpdatePlatformInput, UpdateAccountPlatformInput, UpdateAccountTypeInput,
     UpdateSnapshotInput, MIN_PASSWORD_LENGTH,
 };
 use std::ffi::OsStr;
@@ -461,6 +461,22 @@ fn update_account_type(
 }
 
 #[tauri::command]
+async fn update_account_platform(
+    state: tauri::State<'_, AppState>,
+    input: UpdateAccountPlatformInput,
+) -> Result<DashboardData, AppError> {
+    let db_state = state.db_state.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
+        let db = require_unlocked(&mut guard)?;
+        db.update_account_platform(input)?;
+        db.dashboard_data()
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
+}
+
+#[tauri::command]
 fn move_account(
     state: tauri::State<'_, AppState>,
     input: MoveAccountInput,
@@ -548,6 +564,7 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState {
             db_state: Arc::new(Mutex::new(db_state)),
         })
@@ -574,6 +591,7 @@ pub fn run() {
             move_platform,
             update_account,
             update_account_type,
+            update_account_platform,
             move_account,
             delete_account,
             delete_platform,

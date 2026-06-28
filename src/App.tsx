@@ -115,6 +115,7 @@ export default function App() {
     movePlatformOrder,
     saveAccountName,
     changeAccountType,
+    changeAccountPlatform,
     moveAccountOrder,
     inlineAddAccount,
   } = usePlatformAccounts({
@@ -519,6 +520,8 @@ export default function App() {
         removeAccount={removeAccount}
         inlineAddAccount={inlineAddAccount}
         platformColorFor={platformColorFor}
+        platforms={dashboardData.platforms}
+        changeAccountPlatform={changeAccountPlatform}
       />
 
       <SnapshotModal

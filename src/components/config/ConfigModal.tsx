@@ -47,6 +47,8 @@ export function ConfigModal({
   removeAccount,
   inlineAddAccount,
   platformColorFor,
+  platforms,
+  changeAccountPlatform,
 }: {
   open: boolean;
   onClose: () => void;
@@ -74,6 +76,8 @@ export function ConfigModal({
   removeAccount: (account: Account) => Promise<void>;
   inlineAddAccount: (platformId: number) => Promise<void>;
   platformColorFor: (platformId: number, index: number) => string;
+  platforms: Platform[];
+  changeAccountPlatform: (accountId: number, platformId: number) => Promise<void>;
 }) {
   return (
     <Modal
@@ -265,6 +269,17 @@ export function ConfigModal({
                         value={account.type}
                         options={accountTypeOptions}
                         onChange={(value) => changeAccountType(account.id, value)}
+                      />
+                      <ChoiceSelect
+                        disabled={saving}
+                        value={String(account.platformId)}
+                        options={platforms.map((p) => ({ value: String(p.id), label: p.name, disabled: p.id === account.platformId }))}
+                        onChange={(value) => {
+                          const targetId = Number(value);
+                          if (targetId !== account.platformId) {
+                            changeAccountPlatform(account.id, targetId);
+                          }
+                        }}
                       />
                       <Button
                         variant="ghost"

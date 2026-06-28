@@ -11,3 +11,7 @@ if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database /usr/share/applications || true
 fi
 
+# Update icon cache so the file manager picks up the MIME type icon
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache /usr/share/icons/hicolor || true
+fi

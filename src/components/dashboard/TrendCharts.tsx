@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useMemo } from "react";
 import { DatePicker } from "../DatePicker";
 import { Label } from "../Field";
 import { TimeRangeTabs, type TimeRangeKey } from "../TimeRangeTabs";
@@ -40,6 +41,14 @@ export function TrendCharts({
   platforms: Platform[];
   platformColorFor: (platformId: number, index: number) => string;
 }) {
+  const sortedPlatformAssets = useMemo(() => {
+    if (!lastSummary) return [];
+    const orderMap = new Map(platforms.map((p, i) => [p.id, i]));
+    return [...lastSummary.platformAssets].sort(
+      (a, b) => (orderMap.get(a.platformId) ?? Infinity) - (orderMap.get(b.platformId) ?? Infinity)
+    );
+  }, [lastSummary, platforms]);
+
   return (
     <div className="rounded-xl bg-panel p-4 shadow-panel sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -75,7 +84,7 @@ export function TrendCharts({
                 <ResponsiveContainer width="100%" height={180}>
                   <PieChart>
                     <Pie
-                      data={lastSummary.platformAssets.map((pa, idx) => ({
+                      data={sortedPlatformAssets.map((pa, idx) => ({
                         name: pa.platformName,
                         value: Number(pa.amount),
                       }))}
@@ -86,7 +95,7 @@ export function TrendCharts({
                       outerRadius={70}
                       innerRadius={40}
                     >
-                      {lastSummary.platformAssets.map((pa, idx) => (
+                      {sortedPlatformAssets.map((pa, idx) => (
                         <Cell key={pa.platformName} fill={platformColorFor(pa.platformId, idx)} />
                       ))}
                     </Pie>
@@ -105,7 +114,7 @@ export function TrendCharts({
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="space-y-1 text-sm">
-                  {lastSummary.platformAssets.map((pa, idx) => (
+                  {sortedPlatformAssets.map((pa, idx) => (
                     <div key={pa.platformName} className="flex items-center gap-2">
                       <span
                         className="inline-block size-3 rounded-full"

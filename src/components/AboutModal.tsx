@@ -77,6 +77,10 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
           一款轻量、本地优先的个人资产追踪工具。支持多平台账户管理、快照记录、趋势图表与资产分析，数据文件可选加密保护。
         </p>
 
+        <p className="text-sm leading-relaxed text-ink/40">
+          背景中的无何有之树，取自《庄子》「无何有之乡，广莫之野」。
+        </p>
+
         <button
           type="button"
           onClick={openRepo}

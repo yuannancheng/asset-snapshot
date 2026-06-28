@@ -5,7 +5,7 @@ use crate::models::{
     DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, MoveAccountInput,
     MoveDirection, MovePlatformInput, Platform, Snapshot, SnapshotAnalysis, SnapshotItem,
     SnapshotItemForCalc, SnapshotSummary, GetSnapshotsPageInput, PaginatedSnapshots, UpdateAccountActiveInput, UpdateAccountInput,
-    UpdatePlatformInput, UpdateSnapshotInput, UpdateAccountTypeInput,
+    UpdatePlatformInput, UpdateSnapshotInput, UpdateAccountPlatformInput, UpdateAccountTypeInput,
 };
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
@@ -602,6 +602,24 @@ impl AppDatabase {
         let changed = self.conn.execute(
             "UPDATE accounts SET type = ?1 WHERE id = ?2",
             params![input.account_type.as_db(), input.account_id],
+        )?;
+        if changed == 0 {
+            return Err(AppError::Validation("账户不存在".into()));
+        }
+        Ok(())
+    }
+    pub fn update_account_platform(&self, input: UpdateAccountPlatformInput) -> Result<(), AppError> {
+        let platform_exists: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM platforms WHERE id = ?1",
+            params![input.platform_id],
+            |row| row.get(0),
+        )?;
+        if platform_exists == 0 {
+            return Err(AppError::Validation("目标平台不存在".into()));
+        }
+        let changed = self.conn.execute(
+            "UPDATE accounts SET platform_id = ?1, sort_order = (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM accounts WHERE platform_id = ?1) WHERE id = ?2",
+            params![input.platform_id, input.account_id],
         )?;
         if changed == 0 {
             return Err(AppError::Validation("账户不存在".into()));

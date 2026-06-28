@@ -47,18 +47,48 @@
     "linux": {
       "deb": {
         "files": {
-          "/usr/share/mime/packages/asset-snapshot.xml": "deb/asset-snapshot.xml"
+          "/usr/share/mime/packages/asset-snapshot.xml": "deb/asset-snapshot.xml",
+          "/usr/share/icons/hicolor/scalable/mimetypes/application-vnd.asset-snapshot.sqlite3.svg": "icons/asdb-file-icon.svg",
+          "/usr/share/icons/hicolor/16x16/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-16x16.png",
+          "/usr/share/icons/hicolor/24x24/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-24x24.png",
+          "/usr/share/icons/hicolor/32x32/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-32x32.png",
+          "/usr/share/icons/hicolor/48x48/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-48x48.png",
+          "/usr/share/icons/hicolor/64x64/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-64x64.png",
+          "/usr/share/icons/hicolor/128x128/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-128x128.png",
+          "/usr/share/icons/hicolor/256x256/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-256x256.png"
         },
         "postInstallScript": "deb/postinst",
-        "postRemoveScript": "deb/postrm"
+        "postRemoveScript": "deb/postrm",
+        "desktopTemplate": "deb/main.desktop"
       },
       "rpm": {
         "files": {
-          "/usr/share/mime/packages/asset-snapshot.xml": "deb/asset-snapshot.xml"
+          "/usr/share/mime/packages/asset-snapshot.xml": "deb/asset-snapshot.xml",
+          "/usr/share/icons/hicolor/scalable/mimetypes/application-vnd.asset-snapshot.sqlite3.svg": "icons/asdb-file-icon.svg",
+          "/usr/share/icons/hicolor/16x16/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-16x16.png",
+          "/usr/share/icons/hicolor/24x24/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-24x24.png",
+          "/usr/share/icons/hicolor/32x32/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-32x32.png",
+          "/usr/share/icons/hicolor/48x48/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-48x48.png",
+          "/usr/share/icons/hicolor/64x64/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-64x64.png",
+          "/usr/share/icons/hicolor/128x128/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-128x128.png",
+          "/usr/share/icons/hicolor/256x256/mimetypes/application-vnd.asset-snapshot.sqlite3.png": "icons/filetype/asdb-file-icon-256x256.png"
         },
         "postInstallScript": "rpm/postinst",
-        "postRemoveScript": "rpm/postrm"
+        "postRemoveScript": "rpm/postrm",
+        "desktopTemplate": "deb/main.desktop"
       }
+    },
+    "macOS": {
+      "infoPlist": "Info.plist"
+    },
+    "windows": {
+      "nsis": {
+        "startMenuFolder": "资产快照"
+      }
+    },
+    "resources": {
+      "icons/asdb-file-icon.icns": "asdb-file-icon.icns",
+      "icons/asdb-file-icon.ico": "asdb-file-icon.ico"
     }
   }
 }

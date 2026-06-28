@@ -97,3 +97,8 @@ export type ChangePasswordInput = {
 export type CreateAndSwitchDataFileInput = {
   path: string;
 };
+
+export type UpdateAccountPlatformInput = {
+  accountId: number;
+  platformId: number;
+};

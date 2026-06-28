@@ -1,0 +1,40 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="docBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#162018"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="dbCyl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3A7D54"/>
+      <stop offset="100%" stop-color="#2D4A35"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Document shape -->
+  <rect x="64" y="32" width="384" height="448" rx="80" fill="url(#docBg)"/>
+
+  <!-- Folded corner -->
+  <path d="M64 112 L64 32 L144 32 L144 80 Q144 112 112 112 Z" fill="#1A241C" opacity="0.7"/>
+
+  <!-- Database cylinder (body) -->
+  <ellipse cx="256" cy="348" rx="120" ry="32" fill="#2D4A35"/>
+  <path d="M136 272 L136 348 Q136 380 256 380 Q376 380 376 348 L376 272" fill="url(#dbCyl)" opacity="0.85"/>
+
+  <!-- Database cylinder (top ellipse) -->
+  <ellipse cx="256" cy="272" rx="120" ry="32" fill="#5A9E6F"/>
+
+  <!-- Glow line on top edge -->
+  <ellipse cx="256" cy="272" rx="120" ry="32" fill="none" stroke="#6BCB85" stroke-width="4" opacity="0.5"/>
+
+  <!-- Data bars inside cylinder -->
+  <rect x="196" y="310" width="16" height="24" rx="4" fill="#6BCB85" opacity="0.8"/>
+  <rect x="228" y="296" width="16" height="38" rx="4" fill="#6BCB85" opacity="0.6"/>
+  <rect x="260" y="292" width="16" height="42" rx="4" fill="#6BCB85" opacity="0.9"/>
+  <rect x="292" y="305" width="16" height="29" rx="4" fill="#6BCB85" opacity="0.7"/>
+
+  <!-- Small badge/corner mark -->
+  <circle cx="416" cy="416" r="36" fill="#5A9E6F" opacity="0.15"/>
+  <circle cx="416" cy="416" r="20" fill="#6BCB85" opacity="0.4"/>
+  <path d="M408 416 L415 422 L426 412" stroke="#0F172A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
+

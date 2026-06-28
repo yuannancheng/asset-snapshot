@@ -141,6 +141,10 @@ export async function updateAccountType(input: { accountId: number; type: Accoun
   return invokeCommand<DashboardData>("update_account_type", { input });
 }
 
+export async function updateAccountPlatform(input: { accountId: number; platformId: number }) {
+  return invokeCommand<DashboardData>("update_account_platform", { input });
+}
+
 export async function moveAccount(input: { accountId: number; direction: "up" | "down" }) {
   return invokeCommand<DashboardData>("move_account", { input });
 }

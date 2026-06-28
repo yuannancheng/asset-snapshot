@@ -14,6 +14,7 @@ type ChoiceSelectProps<T extends string> = {
   options: Array<ChoiceOption<T>>;
   placeholder?: string;
   onChange: (value: T) => void;
+  disabled?: boolean;
 };
 
 export function ChoiceSelect<T extends string>({
@@ -21,6 +22,7 @@ export function ChoiceSelect<T extends string>({
   options,
   placeholder = "请选择",
   onChange,
+  disabled = false,
 }: ChoiceSelectProps<T>) {
   const selected = options.find((option) => option.value === value);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -34,14 +36,14 @@ export function ChoiceSelect<T extends string>({
   }, []);
 
   return (
-    <Listbox value={value} onChange={onChange}>
+    <Listbox value={value} onChange={onChange} disabled={disabled}>
       {({ open }) => {
         if (open) checkPosition();
         return (
       <div className="relative">
         <ListboxButton
           ref={buttonRef}
-          className="flex h-10 w-full items-center justify-between gap-3 rounded-md border border-ink/10 bg-panel px-3 text-left text-sm text-ink outline-none transition hover:bg-mint/40 focus:border-moss focus:ring-2 focus:ring-moss/15"
+          className="flex h-10 w-full items-center justify-between gap-3 rounded-md border border-ink/10 bg-panel px-3 text-left text-sm text-ink outline-none transition hover:bg-mint/40 focus:border-moss focus:ring-2 focus:ring-moss/15 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <span className={selected ? "text-ink" : "text-ink/40"}>
             {selected?.label ?? placeholder}
