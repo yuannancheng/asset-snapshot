@@ -1,6 +1,6 @@
 [package]
 name = "asset-snapshot"
-version = "0.2.8"
+version = "0.2.9"
 description = "个人资产快照与趋势分析工具"
 authors = ["asset-snapshot"]
 edition = "2021"
