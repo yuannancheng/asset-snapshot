@@ -5,6 +5,8 @@ import type { TimeRangeKey } from "../components/TimeRangeTabs";
 export type TrendPoint = {
   date: string;
   fullDate: string;
+  /** fullDate for year-start data points; used as XAxis tick when multi-year */
+  xTick?: string;
   总资产: number;
   "总资产（趋势线）"?: number;
 } & Record<string, string | number>;
@@ -123,8 +125,25 @@ export function buildTrendData(
 
   const rawPoints = visibleSummaries.map((summary) => trendPoint(summary));
   const points = polynomialRegression(rawPoints);
+
+  // Mark first data point of each year for XAxis year ticks
+  const yearTicks: string[] = [];
+  let prevYear: number | null = null;
+  for (const pt of points) {
+    const d = parseDate(pt.fullDate);
+    if (d) {
+      const y = d.getFullYear();
+      if (y !== prevYear) {
+        pt.xTick = pt.fullDate;
+        yearTicks.push(pt.fullDate);
+        prevYear = y;
+      }
+    }
+  }
+
   return {
     points,
+    yearTicks,
     visibleCount: visibleSummaries.length,
     rangeLabel: `${formatDate(bounds.start)} 至 ${formatDate(bounds.end)}`,
   };
@@ -173,3 +192,4 @@ function trendPoint(summary: SnapshotSummary): TrendPoint {
     ),
   };
 }
+

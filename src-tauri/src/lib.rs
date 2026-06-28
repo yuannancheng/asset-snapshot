@@ -16,11 +16,113 @@ use models::{
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter, Manager};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
+
+const WINDOW_STATE_FILENAME: &str = ".window-state.json";
 const DATA_FILE_SWITCHED_EVENT: &str = "data-file-switched";
 const DATA_FILE_OPEN_ERROR_EVENT: &str = "data-file-open-error";
 const DATA_FILE_ENCRYPTED_EVENT: &str = "data-file-encrypted";
+
+/// Window state persisted to disk. Saves outer_size so title bar height
+/// never accumulates across restarts on any platform.
+#[derive(Debug, Deserialize, Serialize)]
+struct PersistedWindowState {
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    prev_x: i32,
+    prev_y: i32,
+    maximized: bool,
+    visible: bool,
+    decorated: bool,
+    fullscreen: bool,
+}
+
+// ── Window state persistence ──────────────────────────────────────────
+
+fn load_window_states(app: &tauri::AppHandle) -> HashMap<String, PersistedWindowState> {
+    let Ok(app_dir) = app.path().app_config_dir() else {
+        return HashMap::new();
+    };
+    let state_path = app_dir.join(WINDOW_STATE_FILENAME);
+    let Ok(file) = std::fs::File::open(state_path) else {
+        return HashMap::new();
+    };
+    serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default()
+}
+
+fn save_window_state_to_disk(window: &tauri::WebviewWindow) {
+    let Ok(outer) = window.outer_size() else { return };
+    let Ok(pos) = window.outer_position() else { return };
+    let is_maximized = window.is_maximized().unwrap_or(false);
+    let is_minimized = window.is_minimized().unwrap_or(false);
+
+    if is_minimized || outer.width == 0 || outer.height == 0 {
+        return;
+    }
+
+    let state = PersistedWindowState {
+        width: outer.width,
+        height: outer.height,
+        x: pos.x,
+        y: pos.y,
+        prev_x: pos.x,
+        prev_y: pos.y,
+        maximized: is_maximized,
+        visible: window.is_visible().unwrap_or(true),
+        decorated: window.is_decorated().unwrap_or(true),
+        fullscreen: window.is_fullscreen().unwrap_or(false),
+    };
+
+    let Ok(app_dir) = window.app_handle().path().app_config_dir() else { return };
+    let state_path = app_dir.join(WINDOW_STATE_FILENAME);
+    let mut states = load_window_states(&window.app_handle());
+    states.insert(window.label().to_string(), state);
+
+    if let Ok(json) = serde_json::to_vec_pretty(&states) {
+        let _ = std::fs::write(state_path, json);
+    }
+}
+
+fn restore_window_state_if_ready(window: &tauri::WebviewWindow) -> bool {
+    let states = load_window_states(&window.app_handle());
+    let Some(state) = states.get(window.label()) else { return true };
+
+    let Ok(current_outer) = window.outer_size() else { return false };
+    let Ok(current_inner) = window.inner_size() else { return false };
+
+    // If decorations haven't been applied by the WM yet, outer == inner.
+    // Defer restore to after the first Resized event instead.
+    if current_outer.height <= current_inner.height {
+        return false;
+    }
+
+    let decor_w = current_outer.width.saturating_sub(current_inner.width);
+    let decor_h = current_outer.height.saturating_sub(current_inner.height);
+
+    let target_w = state.width.saturating_sub(decor_w).max(960);
+    let target_h = state.height.saturating_sub(decor_h).max(640);
+
+    let _ = window.set_size(PhysicalSize::new(target_w, target_h));
+    let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
+
+    if state.maximized {
+        let _ = window.maximize();
+    }
+
+    if state.visible {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+
+    true
+}
+
 
 enum DatabaseState {
     Locked {
@@ -564,7 +666,6 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState {
             db_state: Arc::new(Mutex::new(db_state)),
         })
@@ -598,6 +699,39 @@ pub fn run() {
             get_snapshot_analysis,
             save_snapshot_analysis
         ])
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                // Try immediate restore; if WM hasn't applied decorations yet
+                // we defer to the first Resized event.
+                if !restore_window_state_if_ready(&window) {
+                    let win_restore = window.clone();
+                    let win_close = window.clone();
+                    let restored = Arc::new(AtomicBool::new(false));
+                    let r_flag = restored.clone();
+                    window.on_window_event(move |e| {
+                        match e {
+                            WindowEvent::CloseRequested { .. } => {
+                                save_window_state_to_disk(&win_close);
+                            }
+                            WindowEvent::Resized(_) => {
+                                if !r_flag.swap(true, Ordering::SeqCst) {
+                                    restore_window_state_if_ready(&win_restore);
+                                }
+                            }
+                            _ => {}
+                        }
+                    });
+                } else {
+                    let win_close = window.clone();
+                    window.on_window_event(move |e| {
+                        if let WindowEvent::CloseRequested { .. } = &e {
+                            save_window_state_to_disk(&win_close);
+                        }
+                    });
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

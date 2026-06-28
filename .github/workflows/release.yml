@@ -63,28 +63,41 @@ jobs:
       - name: Generate release notes
         id: notes
         shell: bash
+        env:
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
         run: |
           PREV_TAG=$(git tag --sort=-v:refname | grep -v "${{ github.ref_name }}" | head -1)
           REPO="${{ github.repository }}"
           TAG="${{ github.ref_name }}"
 
           if [ -z "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"[%h](https://github.com/${REPO}/commit/%H) %s by @%an" --no-merges)
+            SHAS=$(git log --pretty=format:"%H" --no-merges)
           else
-            COMMITS=$(git log --pretty=format:"[%h](https://github.com/${REPO}/commit/%H) %s by @%an" --no-merges "${PREV_TAG}..HEAD")
+            SHAS=$(git log --pretty=format:"%H" --no-merges "${PREV_TAG}..HEAD")
           fi
 
-          if [ -n "$COMMITS" ]; then
-            {
-              echo "$COMMITS"
-              if [ -n "$PREV_TAG" ]; then
-                echo ""
-                echo "Full Changelog: [${PREV_TAG}...${TAG}](https://github.com/${REPO}/compare/${PREV_TAG}...${TAG})"
-              fi
-            } > /tmp/release-notes.md
-          else
-            echo "Release $TAG" > /tmp/release-notes.md
+          if [ -z "$SHAS" ]; then
+            echo "Release $TAG" > "$NOTES_FILE"
+            exit 0
           fi
+
+          {
+            echo "## Changes"
+            echo ""
+
+            while IFS= read -r sha; do
+              [ -z "$sha" ] && continue
+              SUBJECT=$(git log -1 --pretty=format:"%s" "$sha")
+              SHORT=$(git log -1 --pretty=format:"%h" "$sha")
+              LOGIN=$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.login // .commit.author.name' 2>/dev/null || git log -1 --pretty=format:"%an" "$sha")
+              echo "- ${SUBJECT} ([${SHORT}](https://github.com/${REPO}/commit/${sha})) by @${LOGIN}"
+            done <<< "$SHAS"
+
+            if [ -n "$PREV_TAG" ]; then
+              echo ""
+              echo "**Full Changelog**: [${PREV_TAG}...${TAG}](https://github.com/${REPO}/compare/${PREV_TAG}...${TAG})"
+            fi
+          } > "$NOTES_FILE"
 
       - name: Sync tauri.conf.json version from tag
         shell: bash
@@ -107,5 +120,5 @@ jobs:
           releaseName: "资产快照 v__VERSION__"
           releaseDraft: false
           prerelease: false
-          body_path: /tmp/release-notes.md
+          body_path: ${{ runner.temp }}/release-notes.md
           args: --bundles ${{ matrix.bundles }}

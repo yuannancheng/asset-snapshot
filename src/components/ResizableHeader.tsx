@@ -9,12 +9,14 @@ type ResizeState = {
 type ResizableHeaderProps = {
   labels: string[];
   widths: number[];
+  defaultWidths: number[];
   onResize: (widths: number[]) => void;
 };
 
 const MIN_WIDTH = 60;
+const MAX_WIDTH = 500;
 
-export function ResizableHeader({ labels, widths, onResize }: ResizableHeaderProps) {
+export function ResizableHeader({ labels, widths, defaultWidths, onResize }: ResizableHeaderProps) {
   const [resize, setResize] = useState<ResizeState>(null);
   const widthsRef = useRef(widths);
   const onResizeRef = useRef(onResize);
@@ -29,12 +31,22 @@ export function ResizableHeader({ labels, widths, onResize }: ResizableHeaderPro
     [],
   );
 
+  const handleDoubleClick = useCallback(
+    (index: number, e: React.MouseEvent) => {
+      e.preventDefault();
+      const next = [...widthsRef.current];
+      next[index] = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, defaultWidths[index] ?? next[index]));
+      onResizeRef.current(next);
+    },
+    [defaultWidths],
+  );
+
   useEffect(() => {
     if (!resize) return;
 
     const handleMouseMove = (e: MouseEvent) => {
       const delta = e.clientX - resize.startX;
-      const newWidth = Math.max(MIN_WIDTH, resize.startWidth + delta);
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resize.startWidth + delta));
       const next = [...widthsRef.current];
       next[resize.index] = newWidth;
       onResizeRef.current(next);
@@ -68,6 +80,7 @@ export function ResizableHeader({ labels, widths, onResize }: ResizableHeaderPro
             <div
               className="ml-auto h-4 w-1 shrink-0 cursor-col-resize rounded hover:bg-ink/20"
               onMouseDown={(e) => handleMouseDown(idx, e)}
+              onDoubleClick={(e) => handleDoubleClick(idx, e)}
             />
           ) : null}
         </div>

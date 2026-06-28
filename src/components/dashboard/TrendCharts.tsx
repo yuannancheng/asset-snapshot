@@ -20,6 +20,7 @@ import type { Platform, SnapshotSummary } from "../../lib/types";
 type TrendResult = {
   points: Array<{ date: string; [key: string]: string | number }>;
   rangeLabel: string;
+  yearTicks: string[];
 };
 
 export function TrendCharts({
@@ -48,6 +49,8 @@ export function TrendCharts({
       (a, b) => (orderMap.get(a.platformId) ?? Infinity) - (orderMap.get(b.platformId) ?? Infinity)
     );
   }, [lastSummary, platforms]);
+
+  const multiYear = trend.yearTicks.length > 1;
 
   return (
     <div className="rounded-xl bg-panel p-4 shadow-panel sm:p-6">
@@ -134,9 +137,16 @@ export function TrendCharts({
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={trend.points}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--color-ink) / 0.08)" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="rgb(var(--color-ink) / 0.25)" />
+                <XAxis
+                  dataKey={multiYear ? "xTick" : "date"}
+                  ticks={multiYear ? trend.yearTicks : undefined}
+                  tickFormatter={multiYear ? (value: string) => (value ? value.slice(0, 4) : "") : undefined}
+                  tick={{ fontSize: 12 }}
+                  stroke="rgb(var(--color-ink) / 0.25)"
+                />
                 <YAxis tick={{ fontSize: 12 }} stroke="rgb(var(--color-ink) / 0.25)" />
                 <Tooltip
+                  labelFormatter={(_label: any, payload: any[]) => payload?.[0]?.payload?.fullDate ?? ""}
                   contentStyle={{
                     background: "rgb(var(--color-panel))",
                     border: "1px solid rgb(var(--color-ink) / 0.1)",
@@ -199,3 +209,4 @@ export function TrendCharts({
     </div>
   );
 }
+

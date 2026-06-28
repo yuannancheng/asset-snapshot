@@ -15,6 +15,7 @@ interface SnapshotHistoryProps {
   pageData: PaginatedSnapshots;
   historyRows: HistoryRow[];
   colWidths: number[];
+  defaultWidths: number[];
   onColWidthsChange: (widths: number[]) => void;
   pageSize: number;
   onPageSizeChange: (size: number) => void;
@@ -32,6 +33,7 @@ export function SnapshotHistory({
   pageData,
   historyRows,
   colWidths,
+  defaultWidths,
   onColWidthsChange,
   pageSize,
   onPageSizeChange,
@@ -63,7 +65,8 @@ export function SnapshotHistory({
           <>
             <div className="space-y-2 overflow-x-auto">
               <ResizableHeader
-                labels={["日期", "总资产", "可用资产", "备注", "变动分析", "操作"]}
+                defaultWidths={defaultWidths}
+                labels={["日期", "总资产", "可用资产", "变动分析", "备注", "操作"]}
                 widths={colWidths}
                 onResize={onColWidthsChange}
               />
@@ -80,11 +83,11 @@ export function SnapshotHistory({
                   </div>
                   <div className="font-medium text-ink">{formatMoney(summary.totalAsset)}</div>
                   <div className="text-ink/65">{formatMoney(summary.availableAsset)}</div>
-                  <div className="text-ink/45 truncate" title={snapshot?.note ?? ""}>
-                    {snapshot?.note || "\u2014"}
-                  </div>
-                  <div className="text-ink/55 truncate" title={analysisDesc}>
+                  <div className="text-ink/55 line-clamp-3" title={analysisDesc}>
                     {analysisDesc}
+                  </div>
+                  <div className="text-ink/45 line-clamp-3" title={snapshot?.note ?? ""}>
+                    {snapshot?.note || "\u2014"}
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
@@ -133,4 +136,3 @@ export function SnapshotHistory({
     </div>
   );
 }
-

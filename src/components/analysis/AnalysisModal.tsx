@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Save } from "lucide-react";
 import { Button } from "../Button";
 import { Label } from "../Field";
 import { Modal } from "../Modal";
@@ -15,6 +15,7 @@ export function AnalysisModal({
   analysisChange,
   analysisGap,
   analysisDescription,
+  onSave,
   addAnalysisItem,
   updateAnalysisItem,
   removeAnalysisItem,
@@ -28,6 +29,7 @@ export function AnalysisModal({
   analysisChange: number;
   analysisGap: number;
   analysisDescription: string;
+  onSave: () => void;
   addAnalysisItem: (type: "income" | "expense") => void;
   updateAnalysisItem: (index: number, item: AnalysisItem) => void;
   removeAnalysisItem: (index: number) => void;
@@ -40,9 +42,22 @@ export function AnalysisModal({
       description="解释两次快照之间的重要收入与支出，不记录完整流水。"
       onClose={onClose}
       footer={
-        <Button type="button" variant="secondary" onClick={onClose}>
-          关闭
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            关闭
+          </Button>
+          {analysisPrevious ? (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={onSave}
+              disabled={saving}
+            >
+              <Save size={16} />
+              保存
+            </Button>
+          ) : null}
+        </div>
       }
     >
       <div className="space-y-5">
@@ -78,6 +93,7 @@ export function AnalysisModal({
                 type="income"
                 items={analysisItems}
                 saving={saving}
+                onAdd={addAnalysisItem}
                 onChange={updateAnalysisItem}
                 onRemove={removeAnalysisItem}
               />
@@ -86,32 +102,10 @@ export function AnalysisModal({
                 type="expense"
                 items={analysisItems}
                 saving={saving}
+                onAdd={addAnalysisItem}
                 onChange={updateAnalysisItem}
                 onRemove={removeAnalysisItem}
               />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full"
-                onClick={() => addAnalysisItem("income")}
-                disabled={saving}
-              >
-                <Plus size={16} />
-                新增收入项目
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full"
-                onClick={() => addAnalysisItem("expense")}
-                disabled={saving}
-              >
-                <Plus size={16} />
-                新增支出项目
-              </Button>
             </div>
 
             <div className="space-y-2">

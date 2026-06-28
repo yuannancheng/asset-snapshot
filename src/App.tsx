@@ -43,6 +43,9 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { platformColorDefaults } from "./lib/constants";
 
 
+
+const COL_WIDTHS_KEY = "snapshot-history-column-widths";
+const DEFAULT_COL_WIDTHS = [100, 120, 120, 180, 120, 120];
 const MemoStat = memo(Stat);
 
 export default function App() {
@@ -61,7 +64,20 @@ export default function App() {
   const [locked, setLocked] = useState(false);
   const [passwordSetupOpen, setPasswordSetupOpen] = useState(false);
   const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
-  const [colWidths, setColWidths] = useState([100, 120, 120, 120, 180, 120]);
+  const [colWidths, setColWidths] = useState(() => {
+    try {
+      const stored = localStorage.getItem(COL_WIDTHS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.every((v) => typeof v === "number" && v > 0)) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_COL_WIDTHS;
+  });
   const [creating, setCreating] = useState(false);
   const [toast, setToast] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -149,6 +165,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
+
+  useEffect(() => {
+    localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(colWidths));
+  }, [colWidths]);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -269,6 +289,7 @@ export default function App() {
     analysisGap,
     analysisDescription,
     openAnalysisModal,
+    saveAnalysis,
     addAnalysisItem,
     updateAnalysisItem,
     removeAnalysisItem,
@@ -460,6 +481,7 @@ export default function App() {
       <SnapshotHistory
         pageData={pageData}
         historyRows={historyRows}
+        defaultWidths={DEFAULT_COL_WIDTHS}
         colWidths={colWidths}
         onColWidthsChange={setColWidths}
         pageSize={pageSize}
@@ -547,6 +569,7 @@ export default function App() {
         analysisChange={analysisChange}
         analysisGap={analysisGap}
         analysisDescription={analysisDescription}
+        onSave={saveAnalysis}
         addAnalysisItem={addAnalysisItem}
         updateAnalysisItem={updateAnalysisItem}
         removeAnalysisItem={removeAnalysisItem}

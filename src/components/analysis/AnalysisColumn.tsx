@@ -1,12 +1,15 @@
 import { AnalysisItemCard } from "./AnalysisItemCard";
 import { sumAmounts } from "../../lib/format";
 import type { AnalysisItem } from "../../lib/types";
+import { Plus } from "lucide-react";
+import { Button } from "../Button";
 
 export function AnalysisColumn({
   title,
   type,
   items,
   saving,
+  onAdd,
   onChange,
   onRemove,
 }: {
@@ -14,6 +17,7 @@ export function AnalysisColumn({
   type: "income" | "expense";
   items: AnalysisItem[];
   saving: boolean;
+  onAdd: (type: "income" | "expense") => void;
   onChange: (index: number, item: AnalysisItem) => void;
   onRemove: (index: number) => void;
 }) {
@@ -45,6 +49,16 @@ export function AnalysisColumn({
           </div>
         ) : null}
       </div>
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full"
+        onClick={() => onAdd(type)}
+        disabled={saving}
+      >
+        <Plus size={16} />
+        新增{type === "income" ? "收入" : "支出"}项目
+      </Button>
     </div>
   );
 }
