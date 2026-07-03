@@ -13,5 +13,10 @@ fi
 
 # Update icon cache so the file manager picks up the MIME type icon
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-    gtk-update-icon-cache /usr/share/icons/hicolor || true
+    gtk-update-icon-cache --force /usr/share/icons/hicolor || true
+fi
+
+# GTK4 icon cache for modern GNOME/Ubuntu 24
+if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+    gtk4-update-icon-cache --force /usr/share/icons/hicolor || true
 fi

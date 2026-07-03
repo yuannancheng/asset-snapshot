@@ -1100,7 +1100,7 @@ impl AppDatabase {
     fn paginated_snapshots(&self, limit: i64, offset: i64) -> Result<Vec<Snapshot>, AppError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, date, snapshot_time, note FROM snapshots ORDER BY date ASC, id ASC LIMIT ?1 OFFSET ?2")?;
+            .prepare("SELECT id, date, snapshot_time, note FROM snapshots ORDER BY date DESC, id DESC LIMIT ?1 OFFSET ?2")?;
         let rows = stmt.query_map(params![limit, offset], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -1128,7 +1128,7 @@ impl AppDatabase {
     fn paginated_snapshot_summaries(&self, limit: i64, offset: i64) -> Result<Vec<SnapshotSummary>, AppError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, date FROM snapshots ORDER BY date ASC, id ASC LIMIT ?1 OFFSET ?2")?;
+            .prepare("SELECT id, date FROM snapshots ORDER BY date DESC, id DESC LIMIT ?1 OFFSET ?2")?;
         let snapshot_rows = stmt.query_map(params![limit, offset], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })?;

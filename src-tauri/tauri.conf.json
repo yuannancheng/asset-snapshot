@@ -16,8 +16,8 @@
         "title": "资产快照",
         "width": 1180,
         "height": 780,
-        "minWidth": 960,
-        "minHeight": 640
+        "minWidth": 800,
+        "minHeight": 500
       }
     ],
     "security": {
@@ -84,7 +84,19 @@
     },
     "windows": {
       "nsis": {
-        "startMenuFolder": "资产快照"
+        "template": "nsis/installer.nsi",
+        "installerIcon": "icons/icon.ico",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "customLanguageFiles": {
+          "SimpChinese": "nsis/languages/SimpChinese.nsh",
+          "TradChinese": "nsis/languages/TradChinese.nsh"
+        },
+        "startMenuFolder": "资产快照",
+        "compression": "lzma"
       }
     },
     "resources": {

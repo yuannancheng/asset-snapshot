@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { Trash2, X } from "lucide-react";
 import { Button } from "../Button";
 import { Input } from "../Field";
-import { money } from "../../lib/format";
+import { money, sanitizeAmount } from "../../lib/format";
 import type { AnalysisItem } from "../../lib/types";
 
 export function AnalysisItemCard({
@@ -24,8 +24,9 @@ export function AnalysisItemCard({
   const amountRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const handleAmountChange = (amountIndex: number, value: string) => {
+    const sanitized = sanitizeAmount(value);
     const amounts = item.amounts.map((current, currentIndex) =>
-      currentIndex === amountIndex ? value : current,
+      currentIndex === amountIndex ? sanitized : current,
     );
     onChange(itemIndex, { ...item, amounts });
   };

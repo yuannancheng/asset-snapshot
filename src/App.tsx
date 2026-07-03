@@ -297,6 +297,7 @@ export default function App() {
   } = useAnalysis({
     summaries: dashboardData.summaries,
     showToast,
+    onSaved: refreshPage,
     setSaving,
   });
 
@@ -375,7 +376,7 @@ export default function App() {
 
   const historyRows = useMemo(
     () =>
-      [...pageData.summaries].reverse().map((summary) => {
+      pageData.summaries.map((summary) => {
         const snapshot = pageData.snapshots.find((s) => s.id === summary.snapshotId);
         const prevSummary = previousSummaryFor(summaries, summary.snapshotId);
         const summaryAnalysis = pageData.analyses.find((a) => a.snapshotId === summary.snapshotId);
@@ -579,6 +580,7 @@ export default function App() {
       <AboutModal
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
+        showToast={showToast}
       />
 
       <PasswordSetupModal

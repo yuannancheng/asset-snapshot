@@ -14,10 +14,12 @@ export function useAnalysis({
   summaries,
   showToast,
   setSaving,
+  onSaved,
 }: {
   summaries: SnapshotSummary[];
   showToast: (text: string, kind: "success" | "error") => void;
   setSaving: (saving: boolean) => void;
+  onSaved?: () => void;
 }) {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisSnapshotId, setAnalysisSnapshotId] = useState<number | null>(null);
@@ -72,6 +74,9 @@ export function useAnalysis({
         items: normalizeAnalysisItems(analysisItems),
       });
       setAnalysisItems(nextAnalysis.items);
+      setAnalysisOpen(false);
+      analysisLoadedRef.current = false;
+      onSaved?.();
       showToast("变动分析已保存", "success");
     } catch (reason) {
       showToast(String(reason), "error");

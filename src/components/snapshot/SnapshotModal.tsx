@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { Button } from "../Button";
 import { DatePicker } from "../DatePicker";
 import { Input, Label } from "../Field";
+import { sanitizeAmount } from "../../lib/format";
 import { Modal } from "../Modal";
 import { accountTypeLabel } from "../../lib/constants";
 import type { Account, Platform } from "../../lib/types";
@@ -177,6 +178,7 @@ export function SnapshotModal({
                 <Input
                   selectOnFocus
                   inputMode="decimal"
+                  min="0"
                   ref={(el) => { amountRefs.current[account.id] = el; }}
                   value={snapshotForm.amounts[account.id] ?? "0"}
                   onChange={(event) =>
@@ -184,7 +186,7 @@ export function SnapshotModal({
                       ...current,
                       amounts: {
                         ...current.amounts,
-                        [account.id]: event.target.value,
+                        [account.id]: sanitizeAmount(event.target.value),
                       },
                     }))
                   }

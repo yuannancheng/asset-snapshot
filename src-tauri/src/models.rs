@@ -374,3 +374,10 @@ pub struct DatabaseStatus {
     pub failed_attempts: u32,
     pub wait_seconds: u32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckUpdateOutput {
+    pub version: String,
+    pub html_url: String,
+}

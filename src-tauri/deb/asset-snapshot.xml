@@ -4,7 +4,7 @@
     <comment>Asset Snapshot data file</comment>
     <comment xml:lang="zh-CN">资产快照数据文件</comment>
     <glob pattern="*.asdb"/>
-    <magic priority="50">
+    <magic priority="60">
       <match type="string" value="SQLite format 3" offset="0"/>
     </magic>
   </mime-type>

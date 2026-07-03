@@ -105,8 +105,8 @@ fn restore_window_state_if_ready(window: &tauri::WebviewWindow) -> bool {
     let decor_w = current_outer.width.saturating_sub(current_inner.width);
     let decor_h = current_outer.height.saturating_sub(current_inner.height);
 
-    let target_w = state.width.saturating_sub(decor_w).max(960);
-    let target_h = state.height.saturating_sub(decor_h).max(640);
+    let target_w = state.width.saturating_sub(decor_w).max(800);
+    let target_h = state.height.saturating_sub(decor_h).max(500);
 
     let _ = window.set_size(PhysicalSize::new(target_w, target_h));
     let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
@@ -631,6 +631,32 @@ fn save_snapshot_analysis(
     db.save_snapshot_analysis(input)
 }
 
+#[tauri::command]
+fn check_update() -> Result<Option<models::CheckUpdateOutput>, AppError> {
+    let response = ureq::get("https://github.com/yuannancheng/asset-snapshot/releases/download/updater/update.json")
+        .set("User-Agent", "asset-snapshot")
+        .call()
+        .map_err(|e| AppError::Database(format!("update check request failed: {e}")))?;
+
+    let status = response.status();
+    if status != 200 {
+        // stale/empty updater release returns 404; not an error, just no update info
+        if status == 404 {
+            return Ok(None);
+        }
+        return Err(AppError::Database(format!("update check returned status {status}")));
+    }
+
+    let info: models::CheckUpdateOutput = response.into_json()
+        .map_err(|e| AppError::Database(format!("failed to parse update.json: {e}")))?;
+
+    if info.version.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(info))
+}
+
+
 pub fn run() {
     #[cfg(target_os = "linux")]
     {
@@ -697,7 +723,8 @@ pub fn run() {
             delete_account,
             delete_platform,
             get_snapshot_analysis,
-            save_snapshot_analysis
+            save_snapshot_analysis,
+            check_update
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

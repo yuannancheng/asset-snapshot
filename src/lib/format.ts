@@ -17,6 +17,10 @@ export function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+export function sanitizeAmount(value: string) {
+  return value.replace(/[^0-9.]/g, "");
+}
+
 export function sumAmounts(amounts: string[]) {
   return roundMoney(
     amounts.reduce((total, amount) => {

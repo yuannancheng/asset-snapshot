@@ -20,8 +20,11 @@ jobs:
           - platform: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             bundles: deb,appimage
-          - platform: macos-latest
+          - platform: macos-15
             target: aarch64-apple-darwin
+            bundles: dmg
+          - platform: macos-13
+            target: x86_64-apple-darwin
             bundles: dmg
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
@@ -62,50 +65,18 @@ jobs:
 
       - name: Generate release notes
         id: notes
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NOTES_FILE: ${{ runner.temp }}/release-notes.md
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname | grep -vFx "${{ github.ref_name }}" | head -1)
-          REPO="${{ github.repository }}"
-          TAG="${{ github.ref_name }}"
+          NOTES_FILE="${{ runner.temp }}/release-notes.md"
+          .github/scripts/gen-release-notes.sh "$NOTES_FILE"
 
-          if [ -z "$PREV_TAG" ]; then
-            SHAS=$(git log --pretty=format:"%H" --no-merges)
-          else
-            SHAS=$(git log --pretty=format:"%H" --no-merges "${PREV_TAG}..HEAD")
-          fi
-
-          if [ -z "$SHAS" ]; then
-            echo "Release $TAG" > "$NOTES_FILE"
-            exit 0
-          fi
-
-          {
-            echo "## Changes"
-            echo ""
-
-          while IFS= read -r sha; do
-            [ -z "$sha" ] && continue
-            SUBJECT=$(git log -1 --pretty=format:"%s" "$sha")
-            SHORT=$(git log -1 --pretty=format:"%h" "$sha")
-            LOGIN=$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.login // empty' 2>/dev/null)
-            if [ -z "$LOGIN" ]; then
-              AUTHOR_EMAIL=$(git log -1 --pretty=format:"%ae" "$sha")
-              LOGIN=$(gh api "search/users?q=${AUTHOR_EMAIL}+in:email" --jq '.items[0].login // empty' 2>/dev/null)
-            fi
-            if [ -z "$LOGIN" ]; then
-              LOGIN=$(git log -1 --pretty=format:"%an" "$sha")
-            fi
-            echo "- ${SUBJECT} ([${SHORT}](https://github.com/${REPO}/commit/${sha})) by @${LOGIN}"
-          done <<< "$SHAS"
-
-            if [ -n "$PREV_TAG" ]; then
-              echo ""
-              echo "**Full Changelog**: [${PREV_TAG}...${TAG}](https://github.com/${REPO}/compare/${PREV_TAG}...${TAG})"
-            fi
-          } > "$NOTES_FILE"
+          # Expose release notes as a step output for the tauri-action
+          echo 'notes<<EOF' >> "$GITHUB_OUTPUT"
+          cat "$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sync tauri.conf.json version from tag
         shell: bash
@@ -128,5 +99,33 @@ jobs:
           releaseName: "资产快照 v__VERSION__"
           releaseDraft: false
           prerelease: false
-          body_path: ${{ runner.temp }}/release-notes.md
+          releaseBody: ${{ steps.notes.outputs.notes }}
           args: --bundles ${{ matrix.bundles }}
+
+  publish-updater:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish update.json to updater release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_VERSION="${{ github.ref_name }}"
+          TAG_VERSION="${TAG_VERSION#v}"
+
+          cat > update.json << JSONEOF
+          {
+            "version": "$TAG_VERSION",
+            "htmlUrl": "https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          }
+          JSONEOF
+
+          if gh release view updater --repo "${{ github.repository }}" &>/dev/null; then
+            gh release upload updater update.json --clobber --repo "${{ github.repository }}"
+          else
+            gh release create updater update.json --title "Updater" --notes "Version info for auto-update." --repo "${{ github.repository }}"
+          fi
