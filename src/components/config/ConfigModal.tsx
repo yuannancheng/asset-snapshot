@@ -7,6 +7,7 @@ import {
   PlayCircle,
   Plus,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { Button } from "../Button";
@@ -87,7 +88,15 @@ export function ConfigModal({
       onClose={onClose}
       footer={null}
     >
-      <div className="space-y-6">
+      <div className="relative space-y-6">
+        {saving ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-panel/75">
+            <div className="flex items-center gap-3 text-sm text-ink/70">
+              <Loader2 size={20} className="animate-spin text-mint" />
+              保存中...
+            </div>
+          </div>
+        ) : null}
         <form className="flex flex-wrap items-end gap-3" onSubmit={submitPlatform}>
           <div className="min-w-[120px] flex-1">
             <Label>新建平台</Label>

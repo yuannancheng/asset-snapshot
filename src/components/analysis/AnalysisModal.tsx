@@ -1,4 +1,4 @@
-import { Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { Button } from "../Button";
 import { Label } from "../Field";
 import { Modal } from "../Modal";
@@ -60,7 +60,15 @@ export function AnalysisModal({
         </div>
       }
     >
-      <div className="space-y-5">
+      <div className="relative space-y-5">
+        {saving ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-panel/75">
+            <div className="flex items-center gap-3 text-sm text-ink/70">
+              <Loader2 size={20} className="animate-spin text-mint" />
+              保存中...
+            </div>
+          </div>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-md bg-subtle p-3">
             <p className="text-sm text-ink/55">本期总资产</p>

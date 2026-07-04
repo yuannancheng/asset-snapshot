@@ -1,5 +1,5 @@
 import { FormEvent, useRef } from "react";
-import { Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { Button } from "../Button";
 import { DatePicker } from "../DatePicker";
 import { Input, Label } from "../Field";
@@ -79,7 +79,15 @@ export function SnapshotModal({
         </>
       }
     >
-      <form id="snapshot-form" className="space-y-5" onSubmit={submitSnapshot}>
+      <form id="snapshot-form" className="relative space-y-5" onSubmit={submitSnapshot}>
+        {saving ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-panel/75">
+            <div className="flex items-center gap-3 text-sm text-ink/70">
+              <Loader2 size={20} className="animate-spin text-mint" />
+              保存中...
+            </div>
+          </div>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-[140px_90px_1fr]">
           <div className="space-y-2">
             <Label htmlFor="snapshot-date">日期</Label>

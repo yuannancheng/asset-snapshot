@@ -632,28 +632,31 @@ fn save_snapshot_analysis(
 }
 
 #[tauri::command]
-fn check_update() -> Result<Option<models::CheckUpdateOutput>, AppError> {
-    let response = ureq::get("https://github.com/yuannancheng/asset-snapshot/releases/download/updater/update.json")
-        .set("User-Agent", "asset-snapshot")
-        .call()
-        .map_err(|e| AppError::Database(format!("update check request failed: {e}")))?;
+async fn check_update() -> Result<Option<models::CheckUpdateOutput>, AppError> {
+    tokio::task::spawn_blocking(|| {
+        let response = ureq::get("https://github.com/yuannancheng/asset-snapshot/releases/download/updater/update.json")
+            .set("User-Agent", "asset-snapshot")
+            .call()
+            .map_err(|e| AppError::Database(format!("update check request failed: {e}")))?;
 
-    let status = response.status();
-    if status != 200 {
-        // stale/empty updater release returns 404; not an error, just no update info
-        if status == 404 {
+        let status = response.status();
+        if status != 200 {
+            if status == 404 {
+                return Ok(None);
+            }
+            return Err(AppError::Database(format!("update check returned status {status}")));
+        }
+
+        let info: models::CheckUpdateOutput = response.into_json()
+            .map_err(|e| AppError::Database(format!("failed to parse update.json: {e}")))?;
+
+        if info.version.is_empty() {
             return Ok(None);
         }
-        return Err(AppError::Database(format!("update check returned status {status}")));
-    }
-
-    let info: models::CheckUpdateOutput = response.into_json()
-        .map_err(|e| AppError::Database(format!("failed to parse update.json: {e}")))?;
-
-    if info.version.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(info))
+        Ok(Some(info))
+    })
+    .await
+    .map_err(|e| AppError::Database(format!("task join error: {e}")))?
 }
 
 
