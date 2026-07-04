@@ -1,12 +1,9 @@
 import { ChevronLeft, ChevronRight, ChevronFirst, ChevronLast, MoreHorizontal } from "lucide-react";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { ChoiceSelect } from "./ChoiceSelect";
-
-/* ------------------------------------------------------------------ */
-/*  shadcn/ui-style pagination primitives                              */
-/* ------------------------------------------------------------------ */
 
 function PaginationRoot({ className, ...props }: React.ComponentProps<"nav">) {
   return (
@@ -102,10 +99,6 @@ function PaginationEllipsis({ className, ...props }: React.ComponentProps<"span"
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  page-number generator                                              */
-/* ------------------------------------------------------------------ */
-
 function pageNumbers(current: number, total: number): Array<number | "ellipsis"> {
   if (total <= 7) {
     return Array.from({ length: total }, (_, i) => i + 1);
@@ -119,16 +112,6 @@ function pageNumbers(current: number, total: number): Array<number | "ellipsis">
   pages.push(total);
   return pages;
 }
-
-/* ------------------------------------------------------------------ */
-/*  public Pagination props & component                                */
-/* ------------------------------------------------------------------ */
-
-const PAGE_SIZE_OPTIONS = [
-  { value: "10", label: "10 条/页" },
-  { value: "30", label: "30 条/页" },
-  { value: "100", label: "100 条/页" },
-];
 
 export type PaginationProps = {
   pageSize: number;
@@ -147,9 +130,16 @@ export function Pagination({
   totalCount,
   onPageChange,
 }: PaginationProps) {
+  const { t } = useTranslation();
   if (totalPages <= 0) return null;
 
   const nums = pageNumbers(currentPage, totalPages);
+
+  const PAGE_SIZE_OPTIONS = [
+    { value: "10", label: t("pagination.itemPerPage", { size: 10 }) },
+    { value: "30", label: t("pagination.itemPerPage", { size: 30 }) },
+    { value: "100", label: t("pagination.itemPerPage", { size: 100 }) },
+  ];
 
   return (
     <div className="flex items-center justify-between gap-4 pt-3 border-t border-ink/10">
@@ -207,7 +197,7 @@ export function Pagination({
       </PaginationRoot>
 
       <div className="text-xs text-ink/45 whitespace-nowrap">
-        共 {totalCount} 条
+        {t("pagination.total", { count: totalCount })}
       </div>
     </div>
   );

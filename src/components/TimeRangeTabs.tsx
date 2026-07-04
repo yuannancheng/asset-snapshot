@@ -1,14 +1,8 @@
 import { Tab } from "@headlessui/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "../lib/utils";
 
 export type TimeRangeKey = "1y" | "3y" | "5y" | "custom";
-
-const ranges: Array<{ value: TimeRangeKey; label: string }> = [
-  { value: "1y", label: "最近1年" },
-  { value: "3y", label: "最近3年" },
-  { value: "5y", label: "最近5年" },
-  { value: "custom", label: "自定义" },
-];
 
 type TimeRangeTabsProps = {
   value: TimeRangeKey;
@@ -16,6 +10,15 @@ type TimeRangeTabsProps = {
 };
 
 export function TimeRangeTabs({ value, onChange }: TimeRangeTabsProps) {
+  const { t } = useTranslation();
+
+  const ranges: Array<{ value: TimeRangeKey; label: string }> = [
+    { value: "1y", label: t("timeRange.last1y") },
+    { value: "3y", label: t("timeRange.last3y") },
+    { value: "5y", label: t("timeRange.last5y") },
+    { value: "custom", label: t("timeRange.custom") },
+  ];
+
   const selectedIndex = Math.max(
     ranges.findIndex((range) => range.value === value),
     0,

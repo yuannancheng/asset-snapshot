@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
+import i18n from "../i18n";
 import { createSnapshot, updateSnapshot } from "../lib/api";
 import type { Account, DashboardData, Snapshot } from "../lib/types";
 
@@ -101,7 +102,7 @@ export function useSnapshotForm({
       setData(nextData);
       setSnapshotOpen(false);
       setEditingSnapshotId(null);
-      showToast(editingSnapshotId ? "快照已更新" : "快照已保存", "success");
+      showToast(editingSnapshotId ? i18n.t("snapshot.snapshotUpdated") : i18n.t("snapshot.snapshotSaved"), "success");
       onSnapshotMutated?.();
     } catch (reason) {
       showToast(String(reason), "error");

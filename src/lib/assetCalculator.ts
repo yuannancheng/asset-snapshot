@@ -1,5 +1,6 @@
 import { formatPlainMoney, roundMoney, sumAmounts } from "./format";
 import type { AnalysisItem, SnapshotAnalysis, SnapshotSummary } from "./types";
+import type { TFunction } from "i18next";
 
 export function emptyAnalysisItem(type: "income" | "expense"): AnalysisItem {
   return { type, name: "", amounts: [""] };
@@ -35,15 +36,16 @@ export function snapshotAnalysisDesc(
   summary: SnapshotSummary,
   previous: SnapshotSummary | undefined,
   analysis: SnapshotAnalysis | undefined,
+  t: TFunction,
 ): string {
-  if (!previous || !analysis || analysis.items.length === 0) return "—";
+  if (!previous || !analysis || analysis.items.length === 0) return "\u2014";
   const assetChange = Number(summary.totalAsset) - Number(previous.totalAsset);
   const gap = roundMoney(assetChange - explainedAmount(analysis.items));
-  const desc = buildAnalysisDescription(analysis.items, assetChange, gap);
-  return desc || "—";
+  const desc = buildAnalysisDescription(analysis.items, assetChange, gap, t);
+  return desc || "\u2014";
 }
 
-export function buildAnalysisDescription(items: AnalysisItem[], assetChange: number, gap: number) {
+export function buildAnalysisDescription(items: AnalysisItem[], assetChange: number, gap: number, t: TFunction) {
   const normalized = normalizeAnalysisItems(items)
     .map((item) => ({
       ...item,
@@ -53,34 +55,31 @@ export function buildAnalysisDescription(items: AnalysisItem[], assetChange: num
 
   const sentences: string[] = [];
 
-  // Separate income and expense items
   const incomeParts: string[] = [];
   const expenseParts: string[] = [];
   for (const item of normalized) {
     if (item.type === "income") {
-      incomeParts.push(`${item.name}收入${formatPlainMoney(Math.abs(item.amount))}元`);
+      incomeParts.push(t("analysis.incomeTemplate", { name: item.name, amount: formatPlainMoney(Math.abs(item.amount)) }));
     } else {
-      expenseParts.push(`${item.name}支出${formatPlainMoney(Math.abs(item.amount))}元`);
+      expenseParts.push(t("analysis.expenseTemplate", { name: item.name, amount: formatPlainMoney(Math.abs(item.amount)) }));
     }
   }
-  // Remaining gap: positive goes to income, negative goes to expense
   if (gap > 0) {
-    incomeParts.push(`其余收入${formatPlainMoney(gap)}元`);
+    incomeParts.push(t("analysis.otherIncome", { amount: formatPlainMoney(gap) }));
   } else if (gap < 0) {
-    expenseParts.push(`其余支出${formatPlainMoney(Math.abs(gap))}元`);
+    expenseParts.push(t("analysis.otherExpense", { amount: formatPlainMoney(Math.abs(gap)) }));
   }
   if (incomeParts.length > 0) {
-    sentences.push(incomeParts.join("，") + "。");
+    sentences.push(incomeParts.join("\uFF0C") + "\u3002");
   }
   if (expenseParts.length > 0) {
-    sentences.push(expenseParts.join("，") + "。");
+    sentences.push(expenseParts.join("\uFF0C") + "\u3002");
   }
 
-  // Summary sentence
   const summary =
     assetChange >= 0
-      ? `总资产增加${formatPlainMoney(Math.abs(assetChange))}元。`
-      : `总资产减少${formatPlainMoney(Math.abs(assetChange))}元。`;
+      ? t("analysis.increaseTemplate", { amount: formatPlainMoney(Math.abs(assetChange)) })
+      : t("analysis.decreaseTemplate", { amount: formatPlainMoney(Math.abs(assetChange)) });
   sentences.push(summary);
 
   return sentences.join("");

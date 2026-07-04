@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { KeyRound, ShieldAlert, Timer } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "./Button";
 import { Input, Label } from "./Field";
 
@@ -11,6 +12,7 @@ type UnlockScreenProps = {
 };
 
 export function UnlockScreen({ currentPath, onUnlock, error, waitSeconds }: UnlockScreenProps) {
+  const { t } = useTranslation();
   const [password, setPassword] = useState("");
   const [unlocking, setUnlocking] = useState(false);
   const waiting = waitSeconds > 0;
@@ -33,26 +35,26 @@ export function UnlockScreen({ currentPath, onUnlock, error, waitSeconds }: Unlo
           <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-mint text-moss">
             <KeyRound size={26} />
           </div>
-          <h1 className="mt-4 text-2xl font-semibold text-ink">资产快照</h1>
+          <h1 className="mt-4 text-2xl font-semibold text-ink">{t("password.unlockTitle")}</h1>
           <p className="mt-2 text-sm text-ink/55">
-            当前数据文件已加密，请输入密码解锁。
+            {t("password.unlockDesc")}
           </p>
         </div>
 
         <form onSubmit={submit} className="space-y-5">
           <div className="rounded-md border border-ink/10 bg-subtle p-4">
-            <p className="text-xs font-medium text-ink/45">数据文件位置</p>
+            <p className="text-xs font-medium text-ink/45">{t("password.unlockFileLocation")}</p>
             <p className="mt-1 break-all font-mono text-xs leading-5 text-ink/65">
-              {currentPath || "未知"}
+              {currentPath || t("common.unknown")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="unlock-password">密码</Label>
+            <Label htmlFor="unlock-password">{t("password.unlockPassword")}</Label>
             <Input
               id="unlock-password"
               type="password"
-              placeholder="请输入数据库密码"
+              placeholder={t("password.unlockPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
@@ -65,10 +67,10 @@ export function UnlockScreen({ currentPath, onUnlock, error, waitSeconds }: Unlo
               <Timer size={18} className="mt-px shrink-0 text-moss" />
               <div>
                 <p className="font-medium text-moss">
-                  {error ? error : `请等待 ${waitSeconds} 秒后重试`}
+                  {error ? error : t("password.unlockWait", { seconds: waitSeconds })}
                 </p>
                 <p className="mt-1 text-moss/70">
-                  多次输入错误密码后需要等待，防止暴力破解。
+                  {t("password.unlockWaitBruteForce")}
                 </p>
               </div>
             </div>
@@ -78,19 +80,19 @@ export function UnlockScreen({ currentPath, onUnlock, error, waitSeconds }: Unlo
               <div>
                 <p className="font-medium">{error}</p>
                 <p className="mt-1 text-coral/70">
-                  密码无法找回。如果忘记密码，加密数据将无法恢复。请确保在安全的地方记录密码。
+                  {t("password.unlockErrorHint")}
                 </p>
               </div>
             </div>
           ) : (
             <div className="flex items-start gap-2 rounded-md bg-mint/40 p-3 text-sm text-moss/80">
               <ShieldAlert size={18} className="mt-px shrink-0" />
-              <p>密码无法找回，请务必记住您的密码。不支持密码恢复功能。</p>
+              <p>{t("password.unlockWarning")}</p>
             </div>
           )}
 
           <Button type="submit" disabled={unlocking || !password || waiting} className="w-full">
-            {waiting ? `请等待 ${waitSeconds} 秒...` : unlocking ? "正在解锁..." : "解锁"}
+            {waiting ? t("password.waitBtn", { seconds: waitSeconds }) : unlocking ? t("common.unlocking") : t("password.unlockBtn")}
           </Button>
         </form>
       </div>

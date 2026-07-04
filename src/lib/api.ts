@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import type {
   AccountType,
   DashboardData,
@@ -9,7 +10,7 @@ import type {
 
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (!("__TAURI_INTERNALS__" in window)) {
-    throw new Error("请在 Tauri 桌面应用中编辑数据，浏览器预览仅展示界面。");
+    throw new Error(i18n.t("dataFile.tauriOnly"));
   }
 
   const { invoke } = await import("@tauri-apps/api/core");
@@ -42,7 +43,7 @@ export async function getDataFileInfo() {
   try {
     return await invokeCommand<DataFileInfo>("get_data_file_info");
   } catch {
-    return { currentPath: "浏览器预览模式未连接本地数据库" };
+    return { currentPath: i18n.t("dataFile.browserPreview") };
   }
 }
 

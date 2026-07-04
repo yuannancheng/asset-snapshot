@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { DatePicker } from "../DatePicker";
 import { Label } from "../Field";
 import { TimeRangeTabs, type TimeRangeKey } from "../TimeRangeTabs";
@@ -21,6 +22,8 @@ type TrendResult = {
   points: Array<{ date: string; [key: string]: string | number }>;
   rangeLabel: string;
   yearTicks: string[];
+  totalKey: string;
+  trendKey: string;
 };
 
 export function TrendCharts({
@@ -42,6 +45,8 @@ export function TrendCharts({
   platforms: Platform[];
   platformColorFor: (platformId: number, index: number) => string;
 }) {
+  const { t } = useTranslation();
+
   const sortedPlatformAssets = useMemo(() => {
     if (!lastSummary) return [];
     const orderMap = new Map(platforms.map((p, i) => [p.id, i]));
@@ -51,24 +56,25 @@ export function TrendCharts({
   }, [lastSummary, platforms]);
 
   const multiYear = trend.yearTicks.length > 1;
+  const trendLineDataKey = trend.totalKey + "TrendLabel";
 
   return (
     <div className="rounded-xl bg-panel p-4 shadow-panel sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold text-ink">资产趋势</h2>
+        <h2 className="font-semibold text-ink">{t("dashboard.trendTitle")}</h2>
         <TimeRangeTabs value={timeRange} onChange={setTimeRange} />
       </div>
       {timeRange === "custom" ? (
         <div className="mb-4 grid gap-3 rounded-md bg-subtle p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start">
           <div className="space-y-2">
-            <Label>开始日期</Label>
+            <Label>{t("timeRange.startDate")}</Label>
             <DatePicker
               value={customRange.start}
               onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))}
             />
           </div>
           <div className="space-y-2">
-            <Label>结束日期</Label>
+            <Label>{t("timeRange.endDate")}</Label>
             <DatePicker
               value={customRange.end}
               onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))}
@@ -77,11 +83,11 @@ export function TrendCharts({
         </div>
       ) : null}
       {trend.points.length === 0 ? (
-        <div className="py-16 text-center text-sm text-ink/45">暂无数据</div>
+        <div className="py-16 text-center text-sm text-ink/45">{t("dashboard.noData")}</div>
       ) : (
         <div className="flex flex-col gap-6 lg:flex-row">
           <div className="shrink-0 lg:w-1/4">
-            <h3 className="mb-3 text-sm font-medium text-ink/55">资产分布</h3>
+            <h3 className="mb-3 text-sm font-medium text-ink/55">{t("dashboard.distributionTitle")}</h3>
             {lastSummary ? (
               <div className="flex flex-col items-center gap-4">
                 <ResponsiveContainer width="100%" height={180}>
@@ -130,7 +136,7 @@ export function TrendCharts({
                 </div>
               </div>
             ) : (
-              <div className="py-8 text-center text-sm text-ink/45">暂无快照数据</div>
+              <div className="py-8 text-center text-sm text-ink/45">{t("dashboard.noSnapshotData")}</div>
             )}
           </div>
           <div className="flex-1">
@@ -158,7 +164,7 @@ export function TrendCharts({
                   labelStyle={{ color: "rgb(var(--color-ink))" }}
                   itemStyle={{ color: "rgb(var(--color-ink))" }}
                 />
-                <Line type="linear" dataKey="总资产" stroke="#70ad47" strokeWidth={2} dot={true} />
+                <Line type="linear" dataKey={trend.totalKey} stroke="#70ad47" strokeWidth={2} dot={true} />
                 {platforms.map((platform, idx) => (
                   <Line
                     key={platform.id}
@@ -171,12 +177,12 @@ export function TrendCharts({
                 ))}
                 <Line
                   type="monotone"
-                  dataKey="总资产（趋势线）"
+                  dataKey={trendLineDataKey}
                   stroke="#70ad47"
                   strokeWidth={2}
                   strokeDasharray="5 5"
                   dot={false}
-                  name="总资产（趋势线）"
+                  name={trend.trendKey}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -184,14 +190,14 @@ export function TrendCharts({
             <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink/55">
               <span className="inline-flex items-center gap-1.5">
                 <span className="inline-block size-3 rounded-full" style={{ background: "#48634f" }} />
-                总资产
+                {trend.totalKey}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span
                   className="inline-block size-3 rounded-full border-2 border-dotted"
                   style={{ borderColor: "#70ad47" }}
                 />
-                总资产（趋势线）
+                {trend.trendKey}
               </span>
               {platforms.map((platform, idx) => (
                 <span key={platform.id} className="inline-flex items-center gap-1.5">
@@ -201,7 +207,7 @@ export function TrendCharts({
               ))}
             </div>
             <p className="mt-3 text-xs text-ink/45">
-              {trend.rangeLabel} · {trend.points.length} 个节点
+              {trend.rangeLabel} · {trend.points.length} {t("dashboard.nodeCount")}
             </p>
           </div>
         </div>
@@ -209,4 +215,3 @@ export function TrendCharts({
     </div>
   );
 }
-

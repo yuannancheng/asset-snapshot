@@ -1,4 +1,5 @@
 import { Loader2, Save } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "../Button";
 import { Label } from "../Field";
 import { Modal } from "../Modal";
@@ -35,16 +36,18 @@ export function AnalysisModal({
   removeAnalysisItem: (index: number) => void;
   saving: boolean;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Modal
       open={open}
-      title="资产变动分析"
-      description="解释两次快照之间的重要收入与支出，不记录完整流水。"
+      title={t("analysis.title")}
+      description={t("analysis.description")}
       onClose={onClose}
       footer={
         <div className="flex gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
-            关闭
+            {t("common.close")}
           </Button>
           {analysisPrevious ? (
             <Button
@@ -54,7 +57,7 @@ export function AnalysisModal({
               disabled={saving}
             >
               <Save size={16} />
-              保存
+              {t("common.save")}
             </Button>
           ) : null}
         </div>
@@ -65,39 +68,39 @@ export function AnalysisModal({
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-panel/75">
             <div className="flex items-center gap-3 text-sm text-ink/70">
               <Loader2 size={20} className="animate-spin text-mint" />
-              保存中...
+              {t("common.saving")}
             </div>
           </div>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-md bg-subtle p-3">
-            <p className="text-sm text-ink/55">本期总资产</p>
+            <p className="text-sm text-ink/55">{t("analysis.currentTotal")}</p>
             <p className="mt-1 font-semibold text-ink">{money(analysisSummary?.totalAsset ?? 0)}</p>
           </div>
           <div className="rounded-md bg-subtle p-3">
-            <p className="text-sm text-ink/55">上期总资产</p>
+            <p className="text-sm text-ink/55">{t("analysis.previousTotal")}</p>
             <p className="mt-1 font-semibold text-ink">{money(analysisPrevious?.totalAsset ?? 0)}</p>
           </div>
           <div className="rounded-md bg-subtle p-3">
-            <p className="text-sm text-ink/55">资产变化</p>
+            <p className="text-sm text-ink/55">{t("analysis.assetChange")}</p>
             <p className="mt-1 font-semibold text-moss">{signedAmount(analysisChange)}</p>
           </div>
         </div>
 
         {!analysisPrevious ? (
           <div className="rounded-md border border-ink/10 bg-subtle px-3 py-6 text-center text-sm text-ink/55">
-            这是第一条快照，还没有上期数据可用于分析。
+            {t("analysis.noPrevious")}
           </div>
         ) : (
           <>
             <div className="rounded-md border border-ink/10 p-3">
-              <p className="text-sm text-ink/55">未解释变动</p>
+              <p className="text-sm text-ink/55">{t("analysis.unexplained")}</p>
               <p className="mt-1 font-semibold text-ink">{signedAmount(analysisGap)}</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <AnalysisColumn
-                title="收入项目"
+                title={t("analysis.incomeItems")}
                 type="income"
                 items={analysisItems}
                 saving={saving}
@@ -106,7 +109,7 @@ export function AnalysisModal({
                 onRemove={removeAnalysisItem}
               />
               <AnalysisColumn
-                title="支出项目"
+                title={t("analysis.expenseItems")}
                 type="expense"
                 items={analysisItems}
                 saving={saving}
@@ -117,14 +120,14 @@ export function AnalysisModal({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="analysis-description">变动说明</Label>
+              <Label htmlFor="analysis-description">{t("analysis.descriptionLabel")}</Label>
               <textarea
                 id="analysis-description"
                 readOnly
                 value={analysisDescription}
                 className="min-h-28 w-full resize-none rounded-md border border-ink/10 bg-subtle px-3 py-2 text-sm leading-6 text-ink outline-none"
               />
-              {analysisGap === 0 ? <p className="text-sm font-medium text-moss">已完全解释</p> : null}
+              {analysisGap === 0 ? <p className="text-sm font-medium text-moss">{t("analysis.fullyExplained")}</p> : null}
             </div>
           </>
         )}

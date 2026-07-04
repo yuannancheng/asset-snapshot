@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "./Button";
 import { Input, Label } from "./Field";
 import { Modal } from "./Modal";
@@ -20,6 +21,7 @@ export function PasswordChangeModal({
   saving,
   error,
 }: PasswordChangeModalProps) {
+  const { t } = useTranslation();
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
 
@@ -44,41 +46,41 @@ export function PasswordChangeModal({
   return (
     <Modal
       open={open}
-      title="修改数据库密码"
-      description={`输入新密码以更改加密密钥。密码最短 ${MIN_LENGTH} 位字符。`}
+      title={t("password.changeTitle")}
+      description={t("password.changeDesc", { length: MIN_LENGTH })}
       onClose={close}
     >
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="change-new-password">新密码</Label>
+          <Label htmlFor="change-new-password">{t("password.newPassword")}</Label>
           <Input
             id="change-new-password"
             type="password"
-            placeholder={`至少 ${MIN_LENGTH} 位字符`}
+            placeholder={t("password.passwordPlaceholder", { length: MIN_LENGTH })}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             autoFocus
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="change-confirm-password">确认新密码</Label>
+          <Label htmlFor="change-confirm-password">{t("password.confirmNewPassword")}</Label>
           <Input
             id="change-confirm-password"
             type="password"
-            placeholder="再次输入新密码"
+            placeholder={t("password.reenterNewPassword")}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
           />
         </div>
         <div className="space-y-3">
           <p className="text-sm text-ink/55">
-            请务必记住新密码。密码无法找回，忘记密码将导致数据无法恢复。
+            {t("password.warningRemember")}
           </p>
           {error ? (
             <p className="text-sm text-coral">{error}</p>
           ) : null}
           <Button type="submit" disabled={!valid || saving}>
-            {saving ? "正在修改..." : "修改密码"}
+            {saving ? t("password.changingPassword") : t("password.changePasswordBtn")}
           </Button>
         </div>
       </form>

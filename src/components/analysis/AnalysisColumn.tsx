@@ -1,6 +1,7 @@
 import { AnalysisItemCard } from "./AnalysisItemCard";
 import { sumAmounts } from "../../lib/format";
 import type { AnalysisItem } from "../../lib/types";
+import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { Button } from "../Button";
 
@@ -21,6 +22,7 @@ export function AnalysisColumn({
   onChange: (index: number, item: AnalysisItem) => void;
   onRemove: (index: number) => void;
 }) {
+  const { t } = useTranslation();
   const visibleItems = items
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => item.type === type);
@@ -45,7 +47,7 @@ export function AnalysisColumn({
         })}
         {visibleItems.length === 0 ? (
           <div className="rounded-md bg-subtle px-3 py-6 text-center text-sm text-ink/45">
-            暂无{type === "income" ? "收入" : "支出"}项目
+            {type === "income" ? t("analysis.noIncome") : t("analysis.noExpense")}
           </div>
         ) : null}
       </div>
@@ -57,7 +59,7 @@ export function AnalysisColumn({
         disabled={saving}
       >
         <Plus size={16} />
-        新增{type === "income" ? "收入" : "支出"}项目
+        {type === "income" ? t("analysis.addIncome") : t("analysis.addExpense")}
       </Button>
     </div>
   );

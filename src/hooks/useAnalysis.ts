@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import i18n from "../i18n";
 import { getSnapshotAnalysis, saveSnapshotAnalysis } from "../lib/api";
 import {
   buildAnalysisDescription,
@@ -26,7 +27,6 @@ export function useAnalysis({
   const [analysisItems, setAnalysisItems] = useState<AnalysisItem[]>([]);
   const analysisLoadedRef = useRef(false);
 
-  // Auto-save analysis on changes
   useEffect(() => {
     if (!analysisOpen || !analysisSnapshotId) return;
     if (!analysisLoadedRef.current) {
@@ -46,7 +46,6 @@ export function useAnalysis({
     return () => clearTimeout(timer);
   }, [analysisItems]);
 
-  // Reset analysis loaded flag when opening new analysis
   useEffect(() => {
     if (analysisOpen) return;
     analysisLoadedRef.current = false;
@@ -77,7 +76,7 @@ export function useAnalysis({
       setAnalysisOpen(false);
       analysisLoadedRef.current = false;
       onSaved?.();
-      showToast("变动分析已保存", "success");
+      showToast(i18n.t("analysis.saved"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -128,8 +127,8 @@ export function useAnalysis({
     : 0;
   const analysisGap = roundMoney(analysisChange - explainedAmount(analysisItems));
   const analysisDescription = analysisPrevious
-    ? buildAnalysisDescription(analysisItems, analysisChange, analysisGap)
-    : "—";
+    ? buildAnalysisDescription(analysisItems, analysisChange, analysisGap, i18n.t)
+    : "\u2014";
 
   return {
     analysisOpen,

@@ -1,4 +1,5 @@
 import { Download, FilePlus2, FolderOpen, KeyRound, Lock } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "../Button";
 import { Modal } from "../Modal";
 import {
@@ -8,7 +9,7 @@ import {
   getDatabaseStatus,
   switchDataFile,
 } from "../../lib/api";
-import { dataFileFilters } from "../../lib/constants";
+import { getDataFileFilters } from "../../lib/constants";
 import type { DashboardData, DataFileInfo, DatabaseStatus } from "../../lib/types";
 
 export function DataFileModal({
@@ -40,20 +41,23 @@ export function DataFileModal({
   setPasswordChangeOpen: (v: boolean) => void;
   setPasswordSetupOpen: (v: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const currentDir = (databaseStatus?.currentPath ?? "")
     .replace(/[/\\][^/\\]*$/, "");
+
+  const dataFileFilters = getDataFileFilters(t);
 
   return (
     <Modal
       open={open}
-      title="数据文件"
-      description="资产快照数据存储在 SQLite 文件中，可设置密码加密。"
+      title={t("dataFile.title")}
+      description={t("dataFile.description")}
       onClose={onClose}
       footer={null}
     >
       <div className="space-y-4">
         <div className="rounded-md bg-subtle px-3 py-2 text-sm text-ink/65 break-all">
-          当前数据文件：{databaseStatus?.currentPath ?? "加载中..."}
+          {t("dataFile.currentFilePrefix")}{databaseStatus?.currentPath ?? t("common.loading")}
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
@@ -73,7 +77,7 @@ export function DataFileModal({
                 setDataFileInfo(info);
                 const status = await getDatabaseStatus();
                 setDatabaseStatus(status);
-                showToast("数据文件已切换", "success");
+                showToast(t("dataFile.switched"), "success");
                 onClose();
                 setCreating(false);
               } catch (err) {
@@ -90,7 +94,7 @@ export function DataFileModal({
             }}
           >
             <FolderOpen size={18} />
-            打开数据文件
+            {t("dataFile.openFile")}
           </Button>
           <Button
             variant="secondary"
@@ -105,21 +109,21 @@ export function DataFileModal({
                 if (!selected) return;
                 const info = await backupDataFile({ path: selected as string });
                 setDataFileInfo(info);
-                showToast("备份已导出", "success");
+                showToast(t("dataFile.backupExported"), "success");
               } catch (err) {
                 showToast(String(err), "error");
               }
             }}
           >
             <Download size={18} />
-            导出备份
+            {t("dataFile.exportBackup")}
           </Button>
           <Button
             variant="secondary"
             onClick={async () => {
               if (!("__TAURI_INTERNALS__" in window)) return;
               try {
-                const { save, confirm } = await import("@tauri-apps/plugin-dialog");
+                const { save, confirm: tauriConfirm } = await import("@tauri-apps/plugin-dialog");
                 const selected = await save({
                   filters: dataFileFilters,
                   defaultPath: currentDir ? `${currentDir}/asset-snapshot.asdb` : "asset-snapshot.asdb",
@@ -127,13 +131,13 @@ export function DataFileModal({
                 if (!selected) return;
                 const currentPath = databaseStatus?.currentPath ?? "";
                 const overwriting = currentPath && selected === currentPath;
-                if (overwriting && !await confirm("所选路径与当前数据文件相同，确定要用空白数据库覆盖吗？当前数据将丢失。")) return;
+                if (overwriting && !await tauriConfirm(t("dataFile.confirmOverwrite"))) return;
                 setCreating(true);
                 await new Promise(r => requestAnimationFrame(r));
                 const nextData = await createAndSwitchDataFile({ path: selected as string });
                 setData(nextData);
                 setDataFileInfo({ currentPath: selected as string });
-                showToast("已创建并使用新数据文件", "success");
+                showToast(t("dataFile.createdAndSwitched"), "success");
                 onClose();
                 const newStatus = await getDatabaseStatus();
                 setDatabaseStatus(newStatus);
@@ -145,7 +149,7 @@ export function DataFileModal({
             }}
           >
             <FilePlus2 size={18} />
-            新建数据文件
+            {t("dataFile.newFile")}
           </Button>
         </div>
         <div className="border-t border-ink/10 pt-4">
@@ -153,17 +157,17 @@ export function DataFileModal({
             <div className="flex gap-3">
               <Button variant="secondary" onClick={() => setPasswordChangeOpen(true)}>
                 <KeyRound size={18} />
-                修改密码
+                {t("dataFile.changePassword")}
               </Button>
               <Button variant="secondary" onClick={handleRemovePassword} disabled={passwordLoading}>
                 <Lock size={18} />
-                移除密码
+                {t("dataFile.removePassword")}
               </Button>
             </div>
           ) : (
             <Button variant="secondary" onClick={() => setPasswordSetupOpen(true)}>
               <Lock size={18} />
-              设置密码
+              {t("dataFile.setPassword")}
             </Button>
           )}
         </div>

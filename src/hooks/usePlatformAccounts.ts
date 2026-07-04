@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import i18n from "../i18n";
 import {
   createAccount,
   createPlatform,
@@ -74,7 +75,7 @@ export function usePlatformAccounts({
       }));
       setPlatformName("");
       setPlatformColor("");
-      showToast("平台已添加", "success");
+      showToast(i18n.t("config.platformAdded"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -93,7 +94,7 @@ export function usePlatformAccounts({
       });
       setData(nextData);
       setAccountForm((current) => ({ ...current, name: "" }));
-      showToast("账户已添加", "success");
+      showToast(i18n.t("config.accountAdded"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -109,7 +110,7 @@ export function usePlatformAccounts({
         isActive: !account.isActive,
       });
       setData(nextData);
-      showToast(account.isActive ? "账户已停用" : "账户已启用", "success");
+      showToast(account.isActive ? i18n.t("config.accountDisabled") : i18n.t("config.accountEnabled"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -118,12 +119,12 @@ export function usePlatformAccounts({
   };
 
   const removeAccount = async (account: Account) => {
-    if (!await confirm(`确定删除账户"${account.name}"吗？已有历史快照的账户不能删除。`)) return;
+    if (!await confirm(i18n.t("config.confirmDeleteAccount", { name: account.name }))) return;
     setSaving(true);
     try {
       const nextData = await deleteAccount({ accountId: account.id });
       setData(nextData);
-      showToast("账户已删除", "success");
+      showToast(i18n.t("config.accountDeleted"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -136,7 +137,7 @@ export function usePlatformAccounts({
     if (!platform) return;
     if (
       !await confirm(
-        `确定删除平台"${platform.name}"吗？只有平台下所有账户都没有历史快照时才会删除。`,
+        i18n.t("config.confirmDeletePlatform", { name: platform.name }),
       )
     ) {
       return;
@@ -149,7 +150,7 @@ export function usePlatformAccounts({
         ...current,
         platformId: String(nextData.platforms[0]?.id ?? ""),
       }));
-      showToast("平台已删除", "success");
+      showToast(i18n.t("config.platformDeleted"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -167,7 +168,7 @@ export function usePlatformAccounts({
       const nextData = await updatePlatform({ platformId, name: nextName, color: platform?.color });
       setData(nextData);
       setPlatformEdits((current) => ({ ...current, [platformId]: nextName }));
-      showToast("平台已更新", "success");
+      showToast(i18n.t("config.platformUpdated"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -182,7 +183,7 @@ export function usePlatformAccounts({
     try {
       const nextData = await updatePlatform({ platformId, name: platform.name, color: color || undefined });
       setData(nextData);
-      showToast("平台颜色已更新", "success");
+      showToast(i18n.t("config.platformColorUpdated"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -195,7 +196,7 @@ export function usePlatformAccounts({
     try {
       const nextData = await movePlatform({ platformId, direction });
       setData(nextData);
-      showToast("平台排序已更新", "success");
+      showToast(i18n.t("config.platformOrderUpdated"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -212,7 +213,7 @@ export function usePlatformAccounts({
       const nextData = await updateAccount({ accountId, name: nextName });
       setData(nextData);
       setAccountEdits((current) => ({ ...current, [accountId]: nextName }));
-      showToast("账户已更新", "success");
+      showToast(i18n.t("config.accountUpdated"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -225,7 +226,7 @@ export function usePlatformAccounts({
     try {
       const nextData = await updateAccountType({ accountId, type });
       setData(nextData);
-      showToast("账户类型已更新", "success");
+      showToast(i18n.t("config.accountTypeUpdated"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -237,7 +238,7 @@ export function usePlatformAccounts({
     try {
       const nextData = await updateAccountPlatform({ accountId, platformId });
       setData(nextData);
-      showToast("账户已迁移", "success");
+      showToast(i18n.t("config.accountMoved"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -251,7 +252,7 @@ export function usePlatformAccounts({
     try {
       const nextData = await moveAccount({ accountId, direction });
       setData(nextData);
-      showToast("账户排序已更新", "success");
+      showToast(i18n.t("config.accountOrderUpdated"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {
@@ -275,7 +276,7 @@ export function usePlatformAccounts({
         delete next[platformId];
         return next;
       });
-      showToast("账户已添加", "success");
+      showToast(i18n.t("config.accountAdded"), "success");
     } catch (reason) {
       showToast(String(reason), "error");
     } finally {

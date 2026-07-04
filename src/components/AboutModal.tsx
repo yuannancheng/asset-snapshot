@@ -1,4 +1,5 @@
 import { ExternalLink, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Modal } from "./Modal";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -13,7 +14,6 @@ type AboutModalProps = {
 
 const REPO_URL = "https://github.com/yuannancheng/asset-snapshot";
 const CACHE_KEY = "about_update_check";
-/** 两次真正网络请求的最小间隔（毫秒）*/
 const CACHE_TTL = 1 * 60 * 1000;
 
 const openRepo = () => {
@@ -22,7 +22,6 @@ const openRepo = () => {
   });
 };
 
-/** Inline GitHub icon to avoid deprecated lucide-react brand icon. */
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -43,13 +42,13 @@ const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
+  const { t } = useTranslation();
   const [checkState, setCheckState] = useState<"idle" | "loading" | "error" | "no-update" | "has-update">("idle");
   const [latestVersion, setLatestVersion] = useState("");
   const [releaseUrl, setReleaseUrl] = useState("");
   const checkUpdate = useCallback(async () => {
     if (checkState === "loading") return;
 
-    // Try to load cached result first (stale-while-revalidate)
     let cached: { remote: string; url: string; time: number } | null = null;
     const cachedRaw = localStorage.getItem(CACHE_KEY);
     if (cachedRaw) {
@@ -58,7 +57,6 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
       } catch { /* ignore corrupted cache */ }
     }
 
-    // If cache is fresh, use it directly — no network request
     if (cached && Date.now() - cached.time < CACHE_TTL) {
       setLatestVersion(cached.remote);
       setReleaseUrl(cached.url);
@@ -66,7 +64,6 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
       return;
     }
 
-    // Cache is absent or expired: show stale result while revalidating
     if (cached) {
       setLatestVersion(cached.remote);
       setReleaseUrl(cached.url);
@@ -79,7 +76,7 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
       const data = await invoke<{ version: string; htmlUrl: string } | null>("check_update");
       if (!data) {
         if (!cached) setCheckState("error");
-        showToast("检查更新失败，请稍后重试", "error");
+        showToast(t("about.updateCheckFailed"), "error");
         return;
       }
       const remote = data.version;
@@ -90,15 +87,13 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
         localStorage.setItem(CACHE_KEY, JSON.stringify({ remote, url: data.htmlUrl, time: Date.now() }));
       } catch { /* storage full */ }
     } catch (err) {
-      // If we had stale cache, we already showed it — just warn
       if (!cached) {
         setCheckState("error");
       }
-      showToast("检查更新失败，请稍后重试", "error");
+      showToast(t("about.updateCheckFailed"), "error");
     }
-  }, [checkState, showToast]);
+  }, [checkState, showToast, t]);
 
-  // Reset UI when modal closes
   useEffect(() => {
     if (!open) {
       setCheckState("idle");
@@ -117,7 +112,7 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
   return (
     <Modal
       open={open}
-      title="关于资产快照"
+      title={t("about.title")}
       onClose={onClose}
     >
       <div className="space-y-4">
@@ -145,7 +140,7 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
             <circle cx="748" cy="248" r="16" fill="#6BCB85" opacity="0.6"/>
           </svg>
           <div>
-            <p className="font-semibold text-ink">资产快照</p>
+            <p className="font-semibold text-ink">{t("common.appName")}</p>
             <button
               type="button"
               onClick={checkUpdate}
@@ -156,22 +151,22 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
               {checkState === "loading" ? (
                 <Loader2 size={12} className="animate-spin text-ink/40" />
               ) : checkState === "no-update" ? (
-                <span className="text-[10px] text-mint/80 whitespace-nowrap">已是最新</span>
+                <span className="text-[10px] text-mint/80 whitespace-nowrap">{t("about.alreadyLatest")}</span>
               ) : checkState === "error" ? (
-                <span className="text-[10px] text-coral/80 whitespace-nowrap">获取失败</span>
+                <span className="text-[10px] text-coral/80 whitespace-nowrap">{t("about.fetchFailed")}</span>
               ) : (
-                <span className="text-[10px] text-ink/25 opacity-0 transition group-hover:opacity-100 whitespace-nowrap">检查更新</span>
+                <span className="text-[10px] text-ink/25 opacity-0 transition group-hover:opacity-100 whitespace-nowrap">{t("about.checkUpdate")}</span>
               )}
             </button>
           </div>
         </div>
 
         <p className="text-sm leading-relaxed text-ink/65">
-          一款轻量、本地优先的个人资产追踪工具。支持多平台账户管理、快照记录、趋势图表与资产分析，数据文件可选加密保护。
+          {t("about.description")}
         </p>
 
         <p className="text-sm leading-relaxed text-ink/40">
-          背景中的无何有之树，取自《庄子》「无何有之乡，广莫之野」。
+          {t("about.treeQuote")}
         </p>
 
         <button
@@ -180,7 +175,7 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
           className="inline-flex items-center gap-2 rounded-md border border-ink/10 bg-subtle px-3 py-2 text-sm text-ink/70 transition hover:bg-mint/40 hover:text-ink cursor-pointer"
         >
           <GithubIcon />
-          查看源代码
+          {t("about.viewSource")}
           <ExternalLink size={12} className="text-ink/35" />
           <span className="text-ink/35">yuannancheng/asset-snapshot</span>
         </button>
@@ -188,7 +183,7 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
 
       <Modal
         open={checkState === "has-update"}
-        title="发现新版本"
+        title={t("about.newVersionTitle")}
         onClose={() => setCheckState("no-update")}
         footer={
           <>
@@ -197,20 +192,20 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
               onClick={goToRelease}
               className="rounded-md bg-mint/80 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-mint cursor-pointer"
             >
-              前往发布页
+              {t("about.goToRelease")}
             </button>
             <button
               type="button"
               onClick={() => setCheckState("no-update")}
               className="rounded-md border border-ink/10 bg-subtle px-3 py-1.5 text-sm text-ink/60 transition hover:text-ink cursor-pointer"
             >
-              关闭
+              {t("common.close")}
             </button>
           </>
         }
       >
         <p className="text-sm text-ink/80">
-          发现新版本 <span className="font-semibold text-mint/90">v{latestVersion}</span>，当前版本 v{pkg.version}。
+          {t("about.newVersionDesc", { latest: latestVersion, current: pkg.version })}
         </p>
       </Modal>
 

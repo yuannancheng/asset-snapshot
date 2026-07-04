@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Input } from "../Field";
 
 export function ColorInput({ initialValue, onCommit }: { initialValue: string; onCommit: (color: string) => void }) {
+  const { t } = useTranslation();
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
@@ -20,7 +22,7 @@ export function ColorInput({ initialValue, onCommit }: { initialValue: string; o
       setError(null);
       onCommit(v);
     } else {
-      setError("请输入有效的 #16进制色码");
+      setError(t("datePicker.formatError").replace("日期格式", "#HEX"));
     }
   };
 

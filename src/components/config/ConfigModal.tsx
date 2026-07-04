@@ -2,21 +2,21 @@ import { FormEvent } from "react";
 import {
   ArrowDown,
   ArrowUp,
-
   PauseCircle,
   PlayCircle,
   Plus,
   Trash2,
   Loader2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { Button } from "../Button";
 import { ChoiceSelect } from "../ChoiceSelect";
 import { Input, Label } from "../Field";
 import { Modal } from "../Modal";
 import { ColorInput } from "../platform/ColorInput";
-import { accountTypeOptions } from "../../lib/constants";
-import { presetColors, presetColorLabels } from "../../lib/constants";
+import { getAccountTypeOptions } from "../../lib/constants";
+import { presetColors, getPresetColorLabels } from "../../lib/constants";
 import type { Account, AccountType, Platform } from "../../lib/types";
 
 type PlatformGroup = { platform: Platform; accounts: Account[] };
@@ -80,11 +80,15 @@ export function ConfigModal({
   platforms: Platform[];
   changeAccountPlatform: (accountId: number, platformId: number) => Promise<void>;
 }) {
+  const { t } = useTranslation();
+  const presetColorLabels = getPresetColorLabels(t);
+  const accountTypeOptions = getAccountTypeOptions(t);
+
   return (
     <Modal
       open={open}
-      title="平台与账户"
-      description="管理你的资产平台和账户。"
+      title={t("config.title")}
+      description={t("config.description")}
       onClose={onClose}
       footer={null}
     >
@@ -93,16 +97,16 @@ export function ConfigModal({
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-panel/75">
             <div className="flex items-center gap-3 text-sm text-ink/70">
               <Loader2 size={20} className="animate-spin text-mint" />
-              保存中...
+              {t("common.saving")}
             </div>
           </div>
         ) : null}
         <form className="flex flex-wrap items-end gap-3" onSubmit={submitPlatform}>
           <div className="min-w-[120px] flex-1">
-            <Label>新建平台</Label>
+            <Label>{t("config.newPlatform")}</Label>
             <Input
               value={platformName}
-              placeholder="平台名称"
+              placeholder={t("config.platformName")}
               onChange={(event) => setPlatformName(event.target.value)}
             />
           </div>
@@ -111,7 +115,7 @@ export function ConfigModal({
               <PopoverButton
                 className="size-10 rounded-full border-2 border-ink/15 p-0 transition-shadow hover:shadow-md"
                 style={{ background: platformColor || "conic-gradient(from 0deg, red 0deg 60deg, yellow 60deg 120deg, lime 120deg 180deg, cyan 180deg 240deg, blue 240deg 300deg, magenta 300deg 360deg)", backgroundClip: "padding-box" }}
-                title="选择颜色"
+                title={t("config.chooseColor")}
               />
               <PopoverPanel
                 anchor="bottom"
@@ -134,7 +138,7 @@ export function ConfigModal({
                     type="button"
                     className="size-7 rounded-full border-2 border-transparent transition-shadow hover:shadow-md"
                     style={{ background: "conic-gradient(from 0deg, red 0deg 60deg, yellow 60deg 120deg, lime 120deg 180deg, cyan 180deg 240deg, blue 240deg 300deg, magenta 300deg 360deg)", backgroundClip: "padding-box" }}
-                    title="自定义颜色"
+                    title={t("config.customColor")}
                     onClick={() => {
                       const el = document.getElementById("new-platform-custom-color");
                       if (el) el.click();
@@ -156,7 +160,7 @@ export function ConfigModal({
           </div>
           <Button type="submit" variant="secondary" disabled={saving || !platformName.trim()}>
             <Plus size={16} />
-            添加
+            {t("common.add")}
           </Button>
         </form>
 
@@ -187,7 +191,7 @@ export function ConfigModal({
                         type="button"
                         className="size-7 rounded-full border-2 border-transparent transition-shadow hover:shadow-md"
                         style={{ background: "conic-gradient(from 0deg, red 0deg 60deg, yellow 60deg 120deg, lime 120deg 180deg, cyan 180deg 240deg, blue 240deg 300deg, magenta 300deg 360deg)", backgroundClip: "padding-box" }}
-                        title="自定义颜色"
+                        title={t("config.customColor")}
                         onClick={() => {
                           const el = document.getElementById("existing-platform-custom-color-" + platform.id);
                           if (el) el.click();
@@ -211,7 +215,7 @@ export function ConfigModal({
                   <Button
                     variant="ghost"
                     className="size-7 px-0"
-                    title="上移"
+                    title={t("config.moveUp")}
                     onClick={() => movePlatformOrder(platform.id, "up")}
                     disabled={saving}
                   >
@@ -220,7 +224,7 @@ export function ConfigModal({
                   <Button
                     variant="ghost"
                     className="size-7 px-0"
-                    title="下移"
+                    title={t("config.moveDown")}
                     onClick={() => movePlatformOrder(platform.id, "down")}
                     disabled={saving}
                   >
@@ -229,7 +233,7 @@ export function ConfigModal({
                   <Button
                     variant="ghost"
                     className="size-7 px-0 text-coral"
-                    title="删除平台"
+                    title={t("config.deletePlatform")}
                     onClick={() => removePlatform(platform.id)}
                     disabled={saving}
                   >
@@ -240,7 +244,7 @@ export function ConfigModal({
               <div className="mb-1">
                 <Input
                   value={platformEdits[platform.id] ?? platform.name}
-                  placeholder="编辑平台名称"
+                  placeholder={t("config.editPlatformName")}
                   onChange={(event) =>
                     setPlatformEdits((current) => ({ ...current, [platform.id]: event.target.value }))
                   }
@@ -251,17 +255,17 @@ export function ConfigModal({
                 />
               </div>
               {accounts.length === 0 ? (
-                <p className="py-2 text-xs text-ink/35">暂无账户</p>
+                <p className="py-2 text-xs text-ink/35">{t("config.noAccounts")}</p>
               ) : (
                 <div className="ml-4 space-y-1.5">
                   {accounts.map((account) => (
                     <div key={account.id} className={`flex items-center gap-2 rounded-md p-1.5${!account.isActive ? " opacity-50" : ""}`}>
                       <div className="flex-1 relative">
-                        {!account.isActive && <span className="absolute -top-1.5 left-2 z-10 text-[10px] text-ink/50 bg-panel px-1 rounded">已停用</span>}
+                        {!account.isActive && <span className="absolute -top-1.5 left-2 z-10 text-[10px] text-ink/50 bg-panel px-1 rounded">{t("config.inactive")}</span>}
                         <Input
                           disabled={!account.isActive}
                           value={accountEdits[account.id] ?? account.name}
-                          placeholder="账户名称"
+                          placeholder={t("config.accountName")}
                           onChange={(event) =>
                             setAccountEdits((current) => ({
                               ...current,
@@ -293,7 +297,7 @@ export function ConfigModal({
                       <Button
                         variant="ghost"
                         className="size-8 px-0"
-                        title={account.isActive ? "停用" : "启用"}
+                        title={account.isActive ? t("config.disable") : t("config.enable")}
                         onClick={() => toggleAccountActive(account)}
                         disabled={saving}
                       >
@@ -302,7 +306,7 @@ export function ConfigModal({
                       <Button
                         variant="ghost"
                         className="size-7 px-0"
-                        title="上移"
+                        title={t("config.moveUp")}
                         onClick={() => moveAccountOrder(account.id, "up")}
                         disabled={saving}
                       >
@@ -311,7 +315,7 @@ export function ConfigModal({
                       <Button
                         variant="ghost"
                         className="size-7 px-0"
-                        title="下移"
+                        title={t("config.moveDown")}
                         onClick={() => moveAccountOrder(account.id, "down")}
                         disabled={saving}
                       >
@@ -320,7 +324,7 @@ export function ConfigModal({
                       <Button
                         variant="ghost"
                         className="size-7 px-0 text-coral"
-                        title="删除账户"
+                        title={t("config.deleteAccount")}
                         onClick={() => removeAccount(account)}
                         disabled={saving}
                       >
@@ -334,7 +338,7 @@ export function ConfigModal({
                 <div className="flex-1">
                   <Input
                     value={inlineAccountForms[platform.id]?.name ?? ""}
-                    placeholder="新账户名称"
+                    placeholder={t("config.newAccountName")}
                     onChange={(event) =>
                       setInlineAccountForms((prev) => ({
                         ...prev,
@@ -359,7 +363,7 @@ export function ConfigModal({
                 <Button
                   variant="secondary"
                   className="size-9 shrink-0 px-0"
-                  title="添加账户"
+                  title={t("config.addAccount")}
                   onClick={() => inlineAddAccount(platform.id)}
                   disabled={saving || !inlineAccountForms[platform.id]?.name?.trim()}
                 >

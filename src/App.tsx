@@ -5,6 +5,7 @@ import {
   PlayCircle,
   WalletCards,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { PathDisplay } from "./components/PathDisplay";
 import { PasswordChangeModal } from "./components/PasswordChangeModal";
@@ -35,6 +36,7 @@ import { ConfigModal } from "./components/config/ConfigModal";
 import { SnapshotModal } from "./components/snapshot/SnapshotModal";
 import { SnapshotHistory } from "./components/dashboard/SnapshotHistory";
 import { AnalysisModal } from "./components/analysis/AnalysisModal";
+import { SettingsModal } from "./components/SettingsModal";
 import { usePassword } from "./hooks/usePassword";
 import { usePlatformAccounts } from "./hooks/usePlatformAccounts";
 import { useAnalysis } from "./hooks/useAnalysis";
@@ -49,6 +51,7 @@ const DEFAULT_COL_WIDTHS = [100, 120, 120, 180, 120, 120];
 const MemoStat = memo(Stat);
 
 export default function App() {
+  const { t } = useTranslation();
   const [darkMode, setDarkMode] = useState(
     () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false,
   );
@@ -59,6 +62,7 @@ export default function App() {
 
   const [configOpen, setConfigOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [dataFileOpen, setDataFileOpen] = useState(false);
   const [, setDataFileInfo] = useState<DataFileInfo | null>(null);
   const [locked, setLocked] = useState(false);
@@ -194,7 +198,7 @@ export default function App() {
           setLocked(false);
           queryClient.invalidateQueries({ queryKey: ["dashboardData"] });
           queryClient.invalidateQueries({ queryKey: ["databaseStatus"] });
-          showToast("已通过文件打开切换数据文件", "success");
+          showToast(t("snapshot.switchedViaFile"), "success");
         });
         const errorUnlisten = await listen<string>("data-file-open-error", (event) => {
           showToast(event.payload, "error");
@@ -224,7 +228,7 @@ export default function App() {
       unlistenDataFileError?.();
       unlistenDataFileEncrypted?.();
     };
-  }, [showToast]);
+  }, [showToast, t]);
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -314,31 +318,31 @@ export default function App() {
     (summary: SnapshotSummary) => {
       const snapshot = dashboardData.snapshots.find((item) => item.id === summary.snapshotId);
       if (!snapshot) {
-        showToast("快照明细不存在", "error");
+        showToast(t("snapshot.snapshotNotFound"), "error");
         return;
       }
       openEditSnapshot(snapshot);
     },
-    [dashboardData.snapshots, openEditSnapshot, showToast],
+    [dashboardData.snapshots, openEditSnapshot, showToast, t],
   );
 
   const removeSnapshot = useCallback(
     async (summary: SnapshotSummary) => {
-      if (!await confirm(`确定删除 ${summary.date} 的快照吗？`)) return;
+      if (!await confirm(t("snapshot.confirmDelete", { date: summary.date }))) return;
       setSaving(true);
       try {
         const nextData = await deleteSnapshot({ snapshotId: summary.snapshotId });
         queryClient.setQueryData(["dashboardData"], nextData);
         setCurrentPage(1);
         setPageVersion((v) => v + 1);
-        showToast("快照已删除", "success");
+        showToast(t("snapshot.snapshotDeleted"), "success");
       } catch (reason) {
         showToast(String(reason), "error");
       } finally {
         setSaving(false);
       }
     },
-    [showToast],
+    [showToast, t],
   );
 
   const totalPages = Math.max(1, Math.ceil(pageData.totalCount / pageSize));
@@ -360,8 +364,8 @@ export default function App() {
   const enabledAccountCount = activeAccounts.length;
 
   const trend = useMemo(
-    () => buildTrendData(summaries, timeRange, customRange),
-    [summaries, timeRange, customRange],
+    () => buildTrendData(summaries, timeRange, customRange, t),
+    [summaries, timeRange, customRange, t],
   );
 
   const platformGroups = useMemo(() => {
@@ -380,10 +384,10 @@ export default function App() {
         const snapshot = pageData.snapshots.find((s) => s.id === summary.snapshotId);
         const prevSummary = previousSummaryFor(summaries, summary.snapshotId);
         const summaryAnalysis = pageData.analyses.find((a) => a.snapshotId === summary.snapshotId);
-        const analysisDesc = snapshotAnalysisDesc(summary, prevSummary, summaryAnalysis);
+        const analysisDesc = snapshotAnalysisDesc(summary, prevSummary, summaryAnalysis, t);
         return { summary, snapshot, prevSummary, summaryAnalysis, analysisDesc };
       }),
-    [pageData.summaries, pageData.snapshots, pageData.analyses, summaries],
+    [pageData.summaries, pageData.snapshots, pageData.analyses, summaries, t],
   );
 
   if (loading) {
@@ -391,7 +395,7 @@ export default function App() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <div className="mx-auto size-10 animate-spin rounded-full border-2 border-moss border-t-transparent" />
-          <p className="mt-3 text-sm text-ink/55">加载中...</p>
+          <p className="mt-3 text-sm text-ink/55">{t("common.loading")}</p>
         </div>
       </div>
     );
@@ -400,7 +404,7 @@ export default function App() {
   if (locked) {
     return (
       <UnlockScreen
-        currentPath={databaseStatus?.currentPath ?? (databaseStatus?.encrypted ? "" : "加载中...")}
+        currentPath={databaseStatus?.currentPath ?? (databaseStatus?.encrypted ? "" : t("common.loading"))}
         error={unlockError}
         waitSeconds={unlockWaitSeconds}
         onUnlock={handleUnlock}
@@ -421,26 +425,27 @@ export default function App() {
         setPasswordChangeOpen={setPasswordChangeOpen}
         handleLock={handleLock}
         openAboutModal={() => setAboutOpen(true)}
+        openSettingsModal={() => setSettingsOpen(true)}
       />
 
       <div className="flex items-center gap-x-4 rounded-md border border-ink/10 bg-subtle px-4 py-2 text-xs">
         <span className="inline-flex shrink-0 items-center gap-1.5 text-ink/50">
           <Database size={14} />
-          数据文件:
+          {t("dashboard.dataFileLabel")}
         </span>
         <span
           className="inline-flex min-w-0 cursor-pointer font-mono text-ink/70 transition-colors hover:text-ink"
-          title={databaseStatus?.currentPath ? `点击复制: ${databaseStatus.currentPath}` : ""}
+          title={databaseStatus?.currentPath ? `${t("dashboard.clickToCopy")}${databaseStatus.currentPath}` : ""}
           onClick={() => {
             const p = databaseStatus?.currentPath;
             if (!p) return;
             navigator.clipboard.writeText(p).then(
-              () => showToast("已复制文件路径", "success"),
-              () => showToast("复制失败", "error"),
+              () => showToast(t("common.copiedPath"), "success"),
+              () => showToast(t("common.copyFailed"), "error"),
             );
           }}
         >
-          <PathDisplay path={databaseStatus?.currentPath ?? ""} />
+          <PathDisplay path={databaseStatus?.currentPath ?? ""} unknownText={t("common.unknown")} />
         </span>
         <span
           className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -449,7 +454,7 @@ export default function App() {
               : "bg-ink/5 text-ink/45"
           }`}
         >
-          {databaseStatus?.encrypted ? "已加密" : "未加密"}
+          {databaseStatus?.encrypted ? t("common.encrypted") : t("common.unencrypted")}
         </span>
         {databaseStatus?.encrypted ? (
           <button
@@ -457,15 +462,15 @@ export default function App() {
             className="shrink-0 rounded px-1.5 py-0.5 text-xs text-ink/50 transition hover:text-coral"
             onClick={handleLock}
           >
-            锁定
+            {t("common.lock")}
           </button>
         ) : null}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <MemoStat label="总资产" value={money(lastTotalAsset)} icon={<WalletCards size={20} />} />
-        <MemoStat label="可用资产" value={money(lastAvailableAsset)} icon={<PlayCircle size={20} />} />
-        <MemoStat label="启用账户" value={String(enabledAccountCount)} icon={<Calculator size={20} />} />
+        <MemoStat label={t("dashboard.totalAsset")} value={money(lastTotalAsset)} icon={<WalletCards size={20} />} />
+        <MemoStat label={t("dashboard.availableAsset")} value={money(lastAvailableAsset)} icon={<PlayCircle size={20} />} />
+        <MemoStat label={t("dashboard.enabledAccounts")} value={String(enabledAccountCount)} icon={<Calculator size={20} />} />
       </div>
 
       <TrendCharts
@@ -577,6 +582,11 @@ export default function App() {
         saving={saving}
       />
 
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+
       <AboutModal
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
@@ -614,7 +624,7 @@ export default function App() {
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30">
           <div className="rounded-xl bg-panel px-6 py-4 shadow-panel text-center">
             <div className="mx-auto size-8 animate-spin rounded-full border-2 border-moss border-t-transparent" />
-            <p className="mt-2 text-sm text-ink/70">正在处理，请稍候...</p>
+            <p className="mt-2 text-sm text-ink/70">{t("common.processing")}</p>
           </div>
         </div>
       ) : null}

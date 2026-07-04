@@ -1,11 +1,12 @@
 import { FormEvent, useRef } from "react";
 import { Loader2, Plus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "../Button";
 import { DatePicker } from "../DatePicker";
 import { Input, Label } from "../Field";
 import { sanitizeAmount } from "../../lib/format";
 import { Modal } from "../Modal";
-import { accountTypeLabel } from "../../lib/constants";
+import { accountTypeLabel, getAccountTypeOptions } from "../../lib/constants";
 import type { Account, Platform } from "../../lib/types";
 
 type SnapshotForm = {
@@ -40,10 +41,11 @@ export function SnapshotModal({
   platformColorFor: (platformId: number, index: number) => string;
   openConfigModal: () => void;
 }) {
+  const { t } = useTranslation();
   const timeRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLInputElement>(null);
   const amountRefs = useRef<Record<number, HTMLInputElement | null>>({});
-  
+
   const lastAccountIdx = snapshotAccounts.length - 1;
 
   const focusNextAmount = (currentIdx: number) => {
@@ -65,16 +67,16 @@ export function SnapshotModal({
   return (
     <Modal
       open={open}
-      title={editingSnapshotId ? "编辑快照" : "新建快照"}
-      description="一次快照只记录某个时间点的账户余额。"
+      title={editingSnapshotId ? t("snapshot.editTitle") : t("snapshot.newTitle")}
+      description={t("snapshot.description")}
       onClose={onClose}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
-            取消
+            {t("common.cancel")}
           </Button>
           <Button type="submit" form="snapshot-form" disabled={saving || snapshotAccounts.length === 0}>
-            {editingSnapshotId ? "更新快照" : "保存快照"}
+            {editingSnapshotId ? t("snapshot.updateSnapshot") : t("snapshot.saveSnapshot")}
           </Button>
         </>
       }
@@ -84,13 +86,13 @@ export function SnapshotModal({
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-panel/75">
             <div className="flex items-center gap-3 text-sm text-ink/70">
               <Loader2 size={20} className="animate-spin text-mint" />
-              保存中...
+              {t("common.saving")}
             </div>
           </div>
         ) : null}
         <div className="grid gap-4 sm:grid-cols-[140px_90px_1fr]">
           <div className="space-y-2">
-            <Label htmlFor="snapshot-date">日期</Label>
+            <Label htmlFor="snapshot-date">{t("snapshot.date")}</Label>
             <DatePicker
               value={snapshotForm.date}
               onChange={(value) => setSnapshotForm((current) => ({ ...current, date: value }))}
@@ -98,7 +100,7 @@ export function SnapshotModal({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="snapshot-time">时间</Label>
+            <Label htmlFor="snapshot-time">{t("snapshot.time")}</Label>
             <input
               id="snapshot-time"
               ref={timeRef}
@@ -118,12 +120,12 @@ export function SnapshotModal({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="snapshot-note">备注</Label>
+            <Label htmlFor="snapshot-note">{t("snapshot.note")}</Label>
             <Input
               id="snapshot-note"
               ref={noteRef}
               value={snapshotForm.note}
-              placeholder="可选"
+              placeholder={t("snapshot.notePlaceholder")}
               onChange={(event) =>
                 setSnapshotForm((current) => ({ ...current, note: event.target.value }))
               }
@@ -144,9 +146,9 @@ export function SnapshotModal({
         <div className="max-h-[42vh] space-y-3 overflow-y-auto pr-1">
           {snapshotAccounts.length === 0 ? (
             <div className="rounded-lg border border-dashed border-ink/15 bg-subtle px-4 py-8 text-center">
-              <p className="font-medium text-ink">需要先新建平台和账户</p>
+              <p className="font-medium text-ink">{t("snapshot.noAccountsTitle")}</p>
               <p className="mt-2 text-sm leading-6 text-ink/55">
-                快照必须至少包含一个启用账户。请先在平台与账户中添加平台，再添加账户。
+                {t("snapshot.noAccountsDesc")}
               </p>
               <Button
                 type="button"
@@ -158,7 +160,7 @@ export function SnapshotModal({
                 }}
               >
                 <Plus size={18} />
-                去新建账户
+                {t("snapshot.goCreateAccount")}
               </Button>
             </div>
           ) : null}
@@ -179,7 +181,7 @@ export function SnapshotModal({
                   <div>
                     <p className="font-medium text-ink">{account.name}</p>
                     <p className="mt-1 text-sm text-ink/55">
-                      {platform?.name} · {accountTypeLabel(account.type)}
+                      {platform?.name} · {accountTypeLabel(account.type, t)}
                     </p>
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { Trash2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "../Button";
 import { Input } from "../Field";
 import { money, sanitizeAmount } from "../../lib/format";
@@ -20,6 +21,7 @@ export function AnalysisItemCard({
   onChange: (index: number, item: AnalysisItem) => void;
   onRemove: (index: number) => void;
 }) {
+  const { t } = useTranslation();
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -36,10 +38,8 @@ export function AnalysisItemCard({
       e.preventDefault();
       const isLast = amountIndex === item.amounts.length - 1;
       if (isLast && !item.amounts[amountIndex].trim()) {
-        // Last empty input: just focus it (don't add new one)
         amountRefs.current[amountIndex]?.focus();
       } else {
-        // Non-last or last is non-empty: add new empty and focus
         const nextAmounts = isLast
           ? [...item.amounts, ""]
           : item.amounts;
@@ -54,7 +54,6 @@ export function AnalysisItemCard({
   const handleAmountBlur = (amountIndex: number) => {
     const isLast = amountIndex === item.amounts.length - 1;
     if (isLast && item.amounts[amountIndex].trim()) {
-      // Last non-empty input lost focus: add new empty
       const nextAmounts = [...item.amounts, ""];
       onChange(itemIndex, { ...item, amounts: nextAmounts });
     }
@@ -78,7 +77,7 @@ export function AnalysisItemCard({
         <Input
           ref={nameRef}
           value={item.name}
-          placeholder={item.type === "income" ? "收入名称" : "支出名称"}
+          placeholder={item.type === "income" ? t("analysis.incomeName") : t("analysis.expenseName")}
           onChange={(event) => onChange(itemIndex, { ...item, name: event.target.value })}
           onKeyDown={handleNameKeyDown}
         />
@@ -86,7 +85,7 @@ export function AnalysisItemCard({
           type="button"
           variant="ghost"
           className="size-9 shrink-0 px-0 text-coral"
-          title="删除项目"
+          title={t("analysis.deleteItem")}
           onClick={() => onRemove(itemIndex)}
           disabled={saving}
         >
@@ -103,7 +102,7 @@ export function AnalysisItemCard({
                 ref={(el) => { amountRefs.current[amountIndex] = el; }}
                 inputMode="decimal"
                 value={amount}
-                placeholder="金额"
+                placeholder={t("analysis.amount")}
                 onChange={(event) => handleAmountChange(amountIndex, event.target.value)}
                 onKeyDown={(e) => handleAmountKeyDown(amountIndex, e)}
                 onBlur={() => handleAmountBlur(amountIndex)}
@@ -113,7 +112,7 @@ export function AnalysisItemCard({
                   type="button"
                   variant="ghost"
                   className="size-9 shrink-0 px-0"
-                  title="删除金额"
+                  title={t("analysis.deleteAmount")}
                   onClick={() => removeAmount(amountIndex)}
                   disabled={saving}
                 >
@@ -125,7 +124,7 @@ export function AnalysisItemCard({
             </div>
           );
         })}
-        <p className="text-sm font-medium text-ink/65 text-right">合计 {money(total)}</p>
+        <p className="text-sm font-medium text-ink/65 text-right">{t("analysis.totalPrefix")}{money(total)}</p>
       </div>
     </div>
   );

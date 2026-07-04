@@ -1,4 +1,5 @@
 import { Calculator, Pencil, Plus, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { PaginatedSnapshots, SnapshotSummary } from "../../lib/types";
 import type { DashboardData } from "../../lib/types";
 import { Button } from "../Button";
@@ -46,21 +47,22 @@ export function SnapshotHistory({
   onEdit,
   onDelete,
 }: SnapshotHistoryProps) {
+  const { t } = useTranslation();
 
   return (
     <div className="space-y-6">
       <div className="overflow-clip rounded-xl bg-panel p-4 shadow-panel sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-semibold text-ink">历史快照</h2>
+          <h2 className="font-semibold text-ink">{t("dashboard.historyTitle")}</h2>
           <Button variant="secondary" onClick={onNewSnapshot}>
             <Plus size={18} />
-            新建快照
+            {t("dashboard.newSnapshot")}
           </Button>
         </div>
 
         {pageData.totalCount === 0 ? (
           <div className="py-10 text-center text-sm text-ink/45">
-            还没有历史快照，点击上方按钮创建第一个。
+            {t("dashboard.emptyHistory")}
           </div>
         ) : (
           <>
@@ -72,7 +74,14 @@ export function SnapshotHistory({
                 <div className="sticky top-0 z-10 bg-panel pb-2 pt-1">
                   <ResizableHeader
                     defaultWidths={defaultWidths}
-                    labels={["日期", "总资产", "可用资产", "变动分析", "备注", "操作"]}
+                    labels={[
+                      t("dashboard.colDate"),
+                      t("dashboard.colTotalAsset"),
+                      t("dashboard.colAvailableAsset"),
+                      t("dashboard.colAnalysis"),
+                      t("dashboard.colNote"),
+                      t("dashboard.colActions"),
+                    ]}
                     widths={colWidths}
                     onResize={onColWidthsChange}
                   />
@@ -101,7 +110,7 @@ export function SnapshotHistory({
                         <Button
                           variant="ghost"
                           className="size-9 px-0"
-                          title="查看变动分析"
+                          title={t("dashboard.viewAnalysis")}
                           onClick={() => onAnalysis(summary)}
                         >
                           <Calculator size={16} />
@@ -109,7 +118,7 @@ export function SnapshotHistory({
                         <Button
                           variant="ghost"
                           className="size-9 px-0"
-                          title="编辑快照"
+                          title={t("dashboard.editSnapshot")}
                           onClick={() => onEdit(summary)}
                         >
                           <Pencil size={16} />
@@ -117,7 +126,7 @@ export function SnapshotHistory({
                         <Button
                           variant="ghost"
                           className="size-9 px-0 text-coral"
-                          title="删除快照"
+                          title={t("dashboard.deleteSnapshot")}
                           onClick={() => onDelete(summary)}
                         >
                           <Trash2 size={16} />

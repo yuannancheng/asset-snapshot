@@ -1,5 +1,5 @@
-export function PathDisplay({ path }: { path: string }) {
-  if (!path) return <span>未知</span>;
+export function PathDisplay({ path, unknownText = "Unknown" }: { path: string; unknownText?: string }) {
+  if (!path) return <span>{unknownText}</span>;
   const lastSlash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   if (lastSlash < 0) return <span>{path}</span>;
   const dir = path.slice(0, lastSlash + 1);

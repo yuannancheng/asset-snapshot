@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import i18n from "../i18n";
 import {
   changeDatabasePassword,
   getDatabaseStatus,
@@ -73,7 +74,7 @@ export function usePassword({
       const status = await setDatabasePassword({ password });
       setDatabaseStatus(status);
       setPasswordSetupOpen(false);
-      showToast("数据库密码已设置。请务必记住您的密码。", "success");
+      showToast(i18n.t("password.setSuccess"), "success");
     } catch (err) {
       showToast(String(err), "error");
     } finally {
@@ -87,7 +88,7 @@ export function usePassword({
     try {
       await changeDatabasePassword({ newPassword });
       setPasswordChangeOpen(false);
-      showToast("数据库密码已修改。", "success");
+      showToast(i18n.t("password.changedSuccess"), "success");
     } catch (err) {
       showToast(String(err), "error");
     } finally {
@@ -96,7 +97,7 @@ export function usePassword({
   };
 
   const handleRemovePassword = async () => {
-    if (!await confirm("确定要移除数据库密码吗？数据将不再加密。")) return;
+    if (!await confirm(i18n.t("password.confirmRemove"))) return;
     setPasswordLoading(true);
     await new Promise(r => requestAnimationFrame(r));
     try {
@@ -104,7 +105,7 @@ export function usePassword({
       setDatabaseStatus(status);
       const freshStatus = await getDatabaseStatus();
       setDatabaseStatus(freshStatus);
-      showToast("数据库密码已移除", "success");
+      showToast(i18n.t("password.removedSuccess"), "success");
     } catch (err) {
       showToast(String(err), "error");
     } finally {

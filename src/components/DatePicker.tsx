@@ -1,6 +1,7 @@
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { formatDate, parseDate } from "../lib/date";
 import { cn } from "../lib/utils";
 import { ChoiceSelect } from "./ChoiceSelect";
@@ -11,9 +12,9 @@ type DatePickerProps = {
   onEnter?: () => void;
 };
 
-const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
-
 export function DatePicker({ value, onChange, onEnter }: DatePickerProps) {
+  const { t } = useTranslation();
+  const weekDays = t("datePicker.weekDays", { returnObjects: true }) as unknown as string[];
   const selectedDate = parseDate(value) ?? new Date();
   const [inputValue, setInputValue] = useState(value);
   const [touched, setTouched] = useState(false);
@@ -21,21 +22,23 @@ export function DatePicker({ value, onChange, onEnter }: DatePickerProps) {
     new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
   );
   const days = useMemo(() => calendarDays(visibleMonth), [visibleMonth]);
+  const yearSuffix = t("datePicker.yearSuffix");
+  const monthSuffix = t("datePicker.monthSuffix");
   const yearChoices = useMemo(
     () =>
       yearOptions(visibleMonth.getFullYear()).map((year) => ({
         value: String(year),
-        label: `${year} 年`,
+        label: `${year}${yearSuffix}`,
       })),
-    [visibleMonth],
+    [visibleMonth, yearSuffix],
   );
   const monthChoices = useMemo(
     () =>
       Array.from({ length: 12 }, (_, index) => ({
         value: String(index),
-        label: `${index + 1} 月`,
+        label: `${index + 1}${monthSuffix}`,
       })),
-    [],
+    [monthSuffix],
   );
   const hasError = touched && !parseDate(inputValue);
 
@@ -73,16 +76,16 @@ export function DatePicker({ value, onChange, onEnter }: DatePickerProps) {
         <input
           className="h-full min-w-0 flex-1 rounded-l-md bg-transparent px-3 outline-none placeholder:text-ink/35"
           value={inputValue}
-          placeholder="YYYY-MM-DD 或 M-D"
+          placeholder={t("datePicker.placeholder")}
           inputMode="numeric"
           onChange={(event) => {
             setInputValue(event.target.value);
           }}
           onFocus={(e) => requestAnimationFrame(() => e.target.select())}
           onBlur={(event) => {
-            const value = event.target.value;
+            const val = event.target.value;
             setTouched(true);
-            const date = parseDate(value);
+            const date = parseDate(val);
             if (date) {
               setTouched(false);
               setInputValue(formatDate(date));
@@ -94,9 +97,9 @@ export function DatePicker({ value, onChange, onEnter }: DatePickerProps) {
             if (event.key === "Enter") {
               event.preventDefault();
               event.stopPropagation();
-              const value = (event.target as HTMLInputElement).value;
+              const val = (event.target as HTMLInputElement).value;
               setTouched(true);
-              const date = parseDate(value);
+              const date = parseDate(val);
               if (date) {
                 setTouched(false);
                 setInputValue(formatDate(date));
@@ -114,7 +117,7 @@ export function DatePicker({ value, onChange, onEnter }: DatePickerProps) {
           <CalendarDays size={16} />
         </PopoverButton>
       </div>
-      {hasError ? <p className="mt-1 text-xs text-coral">日期格式如 2024-1-15 或 3-8</p> : null}
+      {hasError ? <p className="mt-1 text-xs text-coral">{t("datePicker.formatError")}</p> : null}
       <PopoverPanel className="absolute z-[70] mt-2 w-72 rounded-lg border border-ink/10 bg-panel p-3 shadow-panel">
         {({ close }) => (
           <>
@@ -127,7 +130,7 @@ export function DatePicker({ value, onChange, onEnter }: DatePickerProps) {
                 <ChevronLeft size={18} />
               </button>
               <p className="text-sm font-semibold text-ink">
-                {visibleMonth.getFullYear()} 年 {visibleMonth.getMonth() + 1} 月
+                {visibleMonth.getFullYear()}{yearSuffix} {visibleMonth.getMonth() + 1}{monthSuffix}
               </p>
               <button
                 type="button"

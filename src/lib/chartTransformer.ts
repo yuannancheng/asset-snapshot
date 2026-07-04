@@ -1,27 +1,15 @@
 import { formatDate, parseDate, startOfDay, today } from "./date";
 import type { SnapshotSummary } from "./types";
 import type { TimeRangeKey } from "../components/TimeRangeTabs";
+import type { TFunction } from "i18next";
 
 export type TrendPoint = {
   date: string;
   fullDate: string;
-  /** fullDate for year-start data points; used as XAxis tick when multi-year */
   xTick?: string;
-  总资产: number;
-  "总资产（趋势线）"?: number;
 } & Record<string, string | number>;
 
-/**
- * Fit a polynomial trend line to the total-asset series
- * y = a0 + a1·x + a2·x² + … + an·xⁿ
- * using least-squares regression.
- *
- * The polynomial degree is dynamically adjusted based
- * on the number of data points to avoid overfitting.
- *
- * X values are normalized to [0, 1] based on time.
- */
-export function polynomialRegression(points: TrendPoint[]): TrendPoint[] {
+export function polynomialRegression(points: TrendPoint[], totalKey: string): TrendPoint[] {
   const n = points.length;
   if (n < 2) return points;
 
@@ -32,14 +20,12 @@ export function polynomialRegression(points: TrendPoint[]): TrendPoint[] {
   const last = parseDate(points[n - 1].fullDate)?.getTime() ?? 1;
   const span = Math.max(last - first, 1);
 
-  // Normalize x to [0, 1]
   const xs = points.map((p) => {
     const t = parseDate(p.fullDate)?.getTime() ?? first;
     return (t - first) / span;
   });
-  const ys = points.map((p) => p["总资产"]);
+  const ys = points.map((p) => p[totalKey] as number);
 
-  // Build normal equations: A[i][j] = sum(x^(i+j)), B[i] = sum(y * x^i)
   const A: number[][] = Array.from({ length: M }, () => Array(M).fill(0));
   const B: number[] = Array(M).fill(0);
 
@@ -58,11 +44,9 @@ export function polynomialRegression(points: TrendPoint[]): TrendPoint[] {
     }
   }
 
-  // Augmented matrix for Gaussian elimination
   const mat: number[][] = A.map((row, i) => [...row, B[i]]);
 
   for (let col = 0; col < M; col++) {
-    // Partial pivot
     let maxRow = col;
     let maxVal = Math.abs(mat[col][col]);
     for (let row = col + 1; row < M; row++) {
@@ -91,8 +75,8 @@ export function polynomialRegression(points: TrendPoint[]): TrendPoint[] {
   }
 
   const coeffs = mat.map((row) => row[M]);
+  const trendKey = totalKey + "TrendLabel";
 
-  // Evaluate the polynomial at each original point's normalized x
   return points.map((pt, i) => {
     const t = xs[i];
     let y = 0;
@@ -101,7 +85,7 @@ export function polynomialRegression(points: TrendPoint[]): TrendPoint[] {
       y += coeffs[d] * tp;
       tp *= t;
     }
-    return { ...pt, "总资产（趋势线）": Number(y.toFixed(2)) };
+    return { ...pt, [trendKey]: Number(y.toFixed(2)) };
   });
 }
 
@@ -109,7 +93,11 @@ export function buildTrendData(
   summaries: SnapshotSummary[],
   range: TimeRangeKey,
   customRange: { start: string; end: string },
+  t: TFunction,
 ) {
+  const totalKey = t("dashboard.totalAssetLegend");
+  const trendKey = t("dashboard.totalAssetTrend");
+
   const sortedSummaries = [...summaries].sort((left, right) => left.date.localeCompare(right.date));
   const lastSummary = sortedSummaries[sortedSummaries.length - 1];
   const anchorDate = parseDate(lastSummary?.date) ?? today();
@@ -123,10 +111,9 @@ export function buildTrendData(
     return time >= startTime && time <= endTime;
   });
 
-  const rawPoints = visibleSummaries.map((summary) => trendPoint(summary));
-  const points = polynomialRegression(rawPoints);
+  const rawPoints = visibleSummaries.map((summary) => trendPoint(summary, totalKey));
+  const points = polynomialRegression(rawPoints, totalKey);
 
-  // Mark first data point of each year for XAxis year ticks
   const yearTicks: string[] = [];
   let prevYear: number | null = null;
   for (const pt of points) {
@@ -145,7 +132,9 @@ export function buildTrendData(
     points,
     yearTicks,
     visibleCount: visibleSummaries.length,
-    rangeLabel: `${formatDate(bounds.start)} 至 ${formatDate(bounds.end)}`,
+    rangeLabel: `${formatDate(bounds.start)}${t("dashboard.rangeSeparator")}${formatDate(bounds.end)}`,
+    totalKey,
+    trendKey,
   };
 }
 
@@ -181,15 +170,14 @@ function normalizeBounds(start: Date, end: Date) {
   return { start: normalizedEnd, end: normalizedStart };
 }
 
-function trendPoint(summary: SnapshotSummary): TrendPoint {
+function trendPoint(summary: SnapshotSummary, totalKey: string): TrendPoint {
   const date = parseDate(summary.date) ?? today();
   return {
     date: `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`,
     fullDate: summary.date,
-    总资产: Number(summary.totalAsset),
+    [totalKey]: Number(summary.totalAsset),
     ...Object.fromEntries(
       summary.platformAssets.map((item) => [item.platformName, Number(item.amount)]),
     ),
   };
 }
-
