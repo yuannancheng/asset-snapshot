@@ -107,8 +107,41 @@ pub fn register_mime_type() {
         }
     }
 
+
+    // --- Yaru icon installation (Ubuntu Nautilus hicolor fallback broken, gnome #3341) ---
+    {
+        let yaru_base = data_dir.join("icons").join("Yaru");
+        let need_yaru_update = icon_entries.iter().any(|(dir, _)| {
+            let file_name = if dir.starts_with("scalable") {
+                format!("{}.svg", MIME_ICON_NAME)
+            } else {
+                format!("{}.png", MIME_ICON_NAME)
+            };
+            !yaru_base.join(dir).join(&file_name).exists()
+        });
+
+        if need_yaru_update {
+            for (dir, data) in icon_entries {
+                let dest_dir = yaru_base.join(dir);
+                let file_name = if dir.starts_with("scalable") {
+                    format!("{}.svg", MIME_ICON_NAME)
+                } else {
+                    format!("{}.png", MIME_ICON_NAME)
+                };
+                let dest = dest_dir.join(&file_name);
+                if !dest.exists() {
+                    if std::fs::create_dir_all(&dest_dir).is_ok() {
+                        let _ = std::fs::write(&dest, data);
+                    }
+                }
+            }
+        }
+        try_run("gtk-update-icon-cache", &[yaru_base.as_path()]);
+        try_run("gtk4-update-icon-cache", &[yaru_base.as_path()]);
+    }
     // --- Cache updates ---
     try_run("update-mime-database", &[data_dir.join("mime").as_path()]);
     try_run("update-desktop-database", &[data_dir.join("applications").as_path()]);
     try_run("gtk-update-icon-cache", &[icons_base.as_path()]);
+    try_run("gtk4-update-icon-cache", &[icons_base.as_path()]);
 }

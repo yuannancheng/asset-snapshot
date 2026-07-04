@@ -93,10 +93,14 @@ export function SnapshotHistory({
                       className="grid items-center gap-3 rounded-lg border border-ink/10 px-4 py-2.5 text-sm"
                       style={{ gridTemplateColumns: colWidths.map((w) => `${w}px`).join(" ") }}
                     >
-                      <div className="font-medium text-ink truncate">
-                        {snapshot?.snapshotTime && snapshot.snapshotTime !== "00:00"
-                          ? `${summary.date} ${snapshot.snapshotTime}`
-                          : summary.date}
+                     <div className="font-medium text-ink truncate">
+                        {snapshot?.snapshotTime && snapshot.snapshotTime !== "00:00" ? (
+                          <span title={`${summary.date} ${snapshot.snapshotTime}`}>
+                            {summary.date}
+                          </span>
+                        ) : (
+                          summary.date
+                        )}
                       </div>
                       <div className="font-medium text-ink">{formatMoney(summary.totalAsset)}</div>
                       <div className="text-ink/65">{formatMoney(summary.availableAsset)}</div>

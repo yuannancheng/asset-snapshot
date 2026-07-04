@@ -151,11 +151,11 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
               {checkState === "loading" ? (
                 <Loader2 size={12} className="animate-spin text-ink/40" />
               ) : checkState === "no-update" ? (
-                <span className="text-[10px] text-mint/80 whitespace-nowrap">{t("about.alreadyLatest")}</span>
+                <span className="text-[10px] text-moss whitespace-nowrap">{t("about.alreadyLatest")}</span>
               ) : checkState === "error" ? (
                 <span className="text-[10px] text-coral/80 whitespace-nowrap">{t("about.fetchFailed")}</span>
               ) : (
-                <span className="text-[10px] text-ink/25 opacity-0 transition group-hover:opacity-100 whitespace-nowrap">{t("about.checkUpdate")}</span>
+                <span className="text-[10px] text-ink/50 opacity-0 transition group-hover:opacity-100 whitespace-nowrap">{t("about.checkUpdate")}</span>
               )}
             </button>
           </div>
@@ -190,7 +190,7 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
             <button
               type="button"
               onClick={goToRelease}
-              className="rounded-md bg-mint/80 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-mint cursor-pointer"
+              className="rounded-md bg-mint/60 px-3 py-1.5 text-sm font-medium text-moss transition hover:bg-mint/80 cursor-pointer"
             >
               {t("about.goToRelease")}
             </button>

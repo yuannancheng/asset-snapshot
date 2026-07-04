@@ -1,6 +1,19 @@
 #!/bin/sh
 set -e
 
+cleanup_yaru() {
+    rm -f /usr/share/icons/Yaru/scalable/mimetypes/application-vnd.asset-snapshot.sqlite3.svg
+    for s in 16x16 24x24 32x32 48x48 64x64 128x128 256x256; do
+        rm -f "/usr/share/icons/Yaru/$s/mimetypes/application-vnd.asset-snapshot.sqlite3.png"
+    done
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache /usr/share/icons/Yaru || true
+    fi
+    if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+        gtk4-update-icon-cache --force /usr/share/icons/Yaru || true
+    fi
+}
+
 if [ "$1" = "0" ]; then
     # Package is being removed (not upgraded)
     rm -f /usr/share/mime/packages/asset-snapshot.xml
@@ -11,19 +24,17 @@ if [ "$1" = "0" ]; then
         update-desktop-database /usr/share/applications || true
     fi
 
-    # Remove MIME type icon files
+    # Remove MIME type icon files from hicolor
     rm -f /usr/share/icons/hicolor/scalable/mimetypes/application-vnd.asset-snapshot.sqlite3.svg
-    rm -f /usr/share/icons/hicolor/16x16/mimetypes/application-vnd.asset-snapshot.sqlite3.png
-    rm -f /usr/share/icons/hicolor/24x24/mimetypes/application-vnd.asset-snapshot.sqlite3.png
-    rm -f /usr/share/icons/hicolor/32x32/mimetypes/application-vnd.asset-snapshot.sqlite3.png
-    rm -f /usr/share/icons/hicolor/48x48/mimetypes/application-vnd.asset-snapshot.sqlite3.png
-    rm -f /usr/share/icons/hicolor/64x64/mimetypes/application-vnd.asset-snapshot.sqlite3.png
-    rm -f /usr/share/icons/hicolor/128x128/mimetypes/application-vnd.asset-snapshot.sqlite3.png
-    rm -f /usr/share/icons/hicolor/256x256/mimetypes/application-vnd.asset-snapshot.sqlite3.png
+    for s in 16x16 24x24 32x32 48x48 64x64 128x128 256x256; do
+        rm -f "/usr/share/icons/hicolor/$s/mimetypes/application-vnd.asset-snapshot.sqlite3.png"
+    done
     if command -v gtk-update-icon-cache >/dev/null 2>&1; then
         gtk-update-icon-cache /usr/share/icons/hicolor || true
     fi
     if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
         gtk4-update-icon-cache --force /usr/share/icons/hicolor || true
     fi
+
+    cleanup_yaru
 fi

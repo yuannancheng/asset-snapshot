@@ -20,3 +20,26 @@ fi
 if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
     gtk4-update-icon-cache --force /usr/share/icons/hicolor || true
 fi
+
+# Yaru theme: on Ubuntu Nautilus hicolor fallback is broken (gnome #3341)
+# so we also copy the MIME icon into Yaru directly
+if [ -d "/usr/share/icons/Yaru" ]; then
+    mkdir -p /usr/share/icons/Yaru/scalable/mimetypes
+    cp /usr/share/icons/hicolor/scalable/mimetypes/application-vnd.asset-snapshot.sqlite3.svg \
+       /usr/share/icons/Yaru/scalable/mimetypes/
+
+    for s in 16x16 24x24 32x32 48x48 64x64 128x128 256x256; do
+        if [ -f "/usr/share/icons/hicolor/$s/mimetypes/application-vnd.asset-snapshot.sqlite3.png" ]; then
+            mkdir -p "/usr/share/icons/Yaru/$s/mimetypes"
+            cp "/usr/share/icons/hicolor/$s/mimetypes/application-vnd.asset-snapshot.sqlite3.png" \
+               "/usr/share/icons/Yaru/$s/mimetypes/"
+        fi
+    done
+
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache --force /usr/share/icons/Yaru || true
+    fi
+    if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+        gtk4-update-icon-cache --force /usr/share/icons/Yaru || true
+    fi
+fi

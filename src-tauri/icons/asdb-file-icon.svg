@@ -1,40 +1,264 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="docBg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#162018"/>
-      <stop offset="100%" stop-color="#0F172A"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1024"
+   height="1024"
+   viewBox="0 0 1024 1024"
+   version="1.1"
+   id="svg48"
+   sodipodi:docname="asdb-file-icon.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview50"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="0.51720994"
+     inkscape:cx="435.99317"
+     inkscape:cy="557.80057"
+     inkscape:window-width="1854"
+     inkscape:window-height="1001"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg48" />
+  <defs
+     id="defs22">
+    <!-- File background -->
+    <linearGradient
+       id="fileBg"
+       x1="90.59383"
+       y1="66.759513"
+       x2="910.2523"
+       y2="886.41798"
+       gradientTransform="scale(0.92721546,1.078498)"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#F8FAFC"
+         id="stop2" />
+      <stop
+         offset="100%"
+         stop-color="#E5E7EB"
+         id="stop4" />
     </linearGradient>
-    <linearGradient id="dbCyl" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#3A7D54"/>
-      <stop offset="100%" stop-color="#2D4A35"/>
+    <!-- Fold -->
+    <linearGradient
+       id="fold"
+       x1="610"
+       y1="72"
+       x2="844"
+       y2="306"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#FFFFFF"
+         id="stop7" />
+      <stop
+         offset="100%"
+         stop-color="#D6DBE3"
+         id="stop9" />
     </linearGradient>
+    <!-- Logo -->
+    <linearGradient
+       id="logoBg"
+       x1="48"
+       y1="48"
+       x2="976"
+       y2="976"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0%"
+         stop-color="#162018"
+         id="stop12" />
+      <stop
+         offset="100%"
+         stop-color="#0F172A"
+         id="stop14" />
+    </linearGradient>
+    <linearGradient
+       id="accent"
+       x1="0"
+       y1="1"
+       x2="0"
+       y2="0">
+      <stop
+         offset="0%"
+         stop-color="#2D4A35"
+         id="stop17" />
+      <stop
+         offset="100%"
+         stop-color="#5A9E6F"
+         id="stop19" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#accent"
+       id="linearGradient337"
+       x1="271.27747"
+       y1="657.27537"
+       x2="271.27747"
+       y2="511.94815"
+       gradientTransform="scale(0.82572282,1.2110601)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#accent"
+       id="linearGradient339"
+       x1="653.35401"
+       y1="506.82477"
+       x2="653.35401"
+       y2="318.35727"
+       gradientTransform="scale(0.63671454,1.5705625)"
+       gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#accent"
+       id="linearGradient341"
+       x1="1185.2102"
+       y1="408.33938"
+       x2="1185.2102"
+       y2="174.41632"
+       gradientTransform="scale(0.51298918,1.9493589)"
+       gradientUnits="userSpaceOnUse" />
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Drop Shadow"
+       id="filter812"
+       x="-0.0094736842"
+       y="-0.0081447964"
+       width="1.0268421"
+       height="1.0230769">
+      <feFlood
+         flood-opacity="0.698039"
+         flood-color="rgb(125,125,125)"
+         result="flood"
+         id="feFlood802" />
+      <feComposite
+         in="flood"
+         in2="SourceGraphic"
+         operator="in"
+         result="composite1"
+         id="feComposite804" />
+      <feGaussianBlur
+         in="composite1"
+         stdDeviation="3"
+         result="blur"
+         id="feGaussianBlur806" />
+      <feOffset
+         dx="6"
+         dy="6"
+         result="offset"
+         id="feOffset808" />
+      <feComposite
+         in="SourceGraphic"
+         in2="offset"
+         operator="over"
+         result="composite2"
+         id="feComposite810" />
+    </filter>
   </defs>
-
-  <!-- Document shape -->
-  <rect x="64" y="32" width="384" height="448" rx="80" fill="url(#docBg)"/>
-
-  <!-- Folded corner -->
-  <path d="M64 112 L64 32 L144 32 L144 80 Q144 112 112 112 Z" fill="#1A241C" opacity="0.7"/>
-
-  <!-- Database cylinder (body) -->
-  <ellipse cx="256" cy="348" rx="120" ry="32" fill="#2D4A35"/>
-  <path d="M136 272 L136 348 Q136 380 256 380 Q376 380 376 348 L376 272" fill="url(#dbCyl)" opacity="0.85"/>
-
-  <!-- Database cylinder (top ellipse) -->
-  <ellipse cx="256" cy="272" rx="120" ry="32" fill="#5A9E6F"/>
-
-  <!-- Glow line on top edge -->
-  <ellipse cx="256" cy="272" rx="120" ry="32" fill="none" stroke="#6BCB85" stroke-width="4" opacity="0.5"/>
-
-  <!-- Data bars inside cylinder -->
-  <rect x="196" y="310" width="16" height="24" rx="4" fill="#6BCB85" opacity="0.8"/>
-  <rect x="228" y="296" width="16" height="38" rx="4" fill="#6BCB85" opacity="0.6"/>
-  <rect x="260" y="292" width="16" height="42" rx="4" fill="#6BCB85" opacity="0.9"/>
-  <rect x="292" y="305" width="16" height="29" rx="4" fill="#6BCB85" opacity="0.7"/>
-
-  <!-- Small badge/corner mark -->
-  <circle cx="416" cy="416" r="36" fill="#5A9E6F" opacity="0.15"/>
-  <circle cx="416" cy="416" r="20" fill="#6BCB85" opacity="0.4"/>
-  <path d="M408 416 L415 422 L426 412" stroke="#0F172A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- File -->
+  <!-- Fold -->
+  <g
+     id="g335"
+     transform="translate(48,-2)"
+     style="filter:url(#filter812)">
+    <path
+       d="m 180,72 h 430 l 234,234 v 554 c 0,53 -43,96 -96,96 H 180 C 127,956 84,913 84,860 V 168 c 0,-53 43,-96 96,-96 z"
+       fill="url(#fileBg)"
+       id="path24"
+       style="fill:url(#fileBg)" />
+    <path
+       d="M 610,72 844,306 H 690 c -44,0 -80,-36 -80,-80 z"
+       fill="url(#fold)"
+       id="path26"
+       style="fill:url(#fold)" />
+  </g>
+  <!-- Logo container -->
+  <g
+     transform="matrix(0.6,0,0,0.6,204.8,313.0866)"
+     id="g46">
+    <rect
+       x="48"
+       y="48"
+       width="928"
+       height="928"
+       rx="196"
+       fill="url(#logoBg)"
+       id="rect28"
+       style="fill:url(#logoBg)" />
+    <rect
+       x="224"
+       y="620"
+       width="120"
+       height="176"
+       rx="16"
+       fill="url(#accent)"
+       opacity="0.55"
+       id="rect30"
+       style="fill:url(#linearGradient337)" />
+    <rect
+       x="416"
+       y="500"
+       width="120"
+       height="296"
+       rx="16"
+       fill="url(#accent)"
+       opacity="0.72"
+       id="rect32"
+       style="fill:url(#linearGradient339)" />
+    <rect
+       x="608"
+       y="340"
+       width="120"
+       height="456"
+       rx="16"
+       fill="url(#accent)"
+       opacity="0.92"
+       id="rect34"
+       style="fill:url(#linearGradient341)" />
+    <polyline
+       points="284,592 476,472 668,312 748,248"
+       stroke="#6bcb85"
+       stroke-width="14"
+       stroke-linecap="round"
+       stroke-linejoin="round"
+       fill="none"
+       id="polyline36" />
+    <circle
+       cx="284"
+       cy="592"
+       r="20"
+       fill="#6bcb85"
+       id="circle38" />
+    <circle
+       cx="476"
+       cy="472"
+       r="20"
+       fill="#6bcb85"
+       id="circle40" />
+    <circle
+       cx="668"
+       cy="312"
+       r="20"
+       fill="#6bcb85"
+       id="circle42" />
+    <circle
+       cx="748"
+       cy="248"
+       r="16"
+       fill="#6bcb85"
+       opacity="0.6"
+       id="circle44" />
+  </g>
 </svg>
-
