@@ -1,4 +1,5 @@
 import { Calculator, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PaginatedSnapshots, SnapshotSummary } from "../../lib/types";
 import type { DashboardData } from "../../lib/types";
@@ -48,6 +49,7 @@ export function SnapshotHistory({
   onDelete,
 }: SnapshotHistoryProps) {
   const { t } = useTranslation();
+  const [isHistoryHeaderSticky, setIsHistoryHeaderSticky] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -69,9 +71,19 @@ export function SnapshotHistory({
             <div
               className="overflow-auto"
               style={{ maxHeight: "calc(100vh - 13rem)" }}
+              onScroll={(event) => {
+                const isSticky = event.currentTarget.scrollTop > 0;
+                setIsHistoryHeaderSticky((previous) =>
+                  previous === isSticky ? previous : isSticky,
+                );
+              }}
             >
               <div className="w-max min-w-full">
-                <div className="sticky top-0 z-10 bg-panel pb-2 pt-1">
+                <div
+                  className={`sticky top-0 z-10 pb-2 pt-1 transition-colors ${
+                    isHistoryHeaderSticky ? "bg-panel" : "bg-transparent"
+                  }`}
+                >
                   <ResizableHeader
                     defaultWidths={defaultWidths}
                     labels={[

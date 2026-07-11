@@ -1,128 +1,27 @@
-#[cfg(target_os = "linux")]
-mod mime;
 mod calculations;
 mod db;
+#[cfg(target_os = "linux")]
+mod mime;
 mod models;
 
 use db::AppDatabase;
 use models::{
-    AppError, BackupDataFileInput, ChangePasswordInput, CreateAccountInput, CreatePlatformInput,
-    CreateSnapshotInput, CreateAndSwitchDataFileInput, DashboardData, DataFileInfo, DatabaseStatus, DeleteAccountInput,
-    DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, GetSnapshotsPageInput, MoveAccountInput,
-    MovePlatformInput, PaginatedSnapshots, SetPasswordInput, SnapshotAnalysis, SwitchDataFileInput,
-    UnlockInput, UpdateAccountActiveInput, UpdateAccountInput, UpdatePlatformInput, UpdateAccountPlatformInput, UpdateAccountTypeInput,
-    UpdateSnapshotInput, MIN_PASSWORD_LENGTH,
+    AppError, BackupDataFileInput, ChangePasswordInput, CreateAccountInput,
+    CreateAndSwitchDataFileInput, CreatePlatformInput, CreateSnapshotInput, DashboardData,
+    DataFileInfo, DatabaseStatus, DeleteAccountInput, DeletePlatformInput, DeleteSnapshotInput,
+    GetSnapshotAnalysisInput, GetSnapshotsPageInput, MoveAccountInput, MovePlatformInput,
+    PaginatedSnapshots, SetPasswordInput, SnapshotAnalysis, SwitchDataFileInput, UnlockInput,
+    UpdateAccountActiveInput, UpdateAccountInput, UpdateAccountPlatformInput,
+    UpdateAccountTypeInput, UpdatePlatformInput, UpdateSnapshotInput, MIN_PASSWORD_LENGTH,
 };
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use tauri::{Emitter, Manager};
 
-
-const WINDOW_STATE_FILENAME: &str = ".window-state.json";
 const DATA_FILE_SWITCHED_EVENT: &str = "data-file-switched";
 const DATA_FILE_OPEN_ERROR_EVENT: &str = "data-file-open-error";
 const DATA_FILE_ENCRYPTED_EVENT: &str = "data-file-encrypted";
-
-/// Window state persisted to disk. Saves outer_size so title bar height
-/// never accumulates across restarts on any platform.
-#[derive(Debug, Deserialize, Serialize)]
-struct PersistedWindowState {
-    width: u32,
-    height: u32,
-    x: i32,
-    y: i32,
-    prev_x: i32,
-    prev_y: i32,
-    maximized: bool,
-    visible: bool,
-    decorated: bool,
-    fullscreen: bool,
-}
-
-// ── Window state persistence ──────────────────────────────────────────
-
-fn load_window_states(app: &tauri::AppHandle) -> HashMap<String, PersistedWindowState> {
-    let Ok(app_dir) = app.path().app_config_dir() else {
-        return HashMap::new();
-    };
-    let state_path = app_dir.join(WINDOW_STATE_FILENAME);
-    let Ok(file) = std::fs::File::open(state_path) else {
-        return HashMap::new();
-    };
-    serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default()
-}
-
-fn save_window_state_to_disk(window: &tauri::WebviewWindow) {
-    let Ok(outer) = window.outer_size() else { return };
-    let Ok(pos) = window.outer_position() else { return };
-    let is_maximized = window.is_maximized().unwrap_or(false);
-    let is_minimized = window.is_minimized().unwrap_or(false);
-
-    if is_minimized || outer.width == 0 || outer.height == 0 {
-        return;
-    }
-
-    let state = PersistedWindowState {
-        width: outer.width,
-        height: outer.height,
-        x: pos.x,
-        y: pos.y,
-        prev_x: pos.x,
-        prev_y: pos.y,
-        maximized: is_maximized,
-        visible: window.is_visible().unwrap_or(true),
-        decorated: window.is_decorated().unwrap_or(true),
-        fullscreen: window.is_fullscreen().unwrap_or(false),
-    };
-
-    let Ok(app_dir) = window.app_handle().path().app_config_dir() else { return };
-    let state_path = app_dir.join(WINDOW_STATE_FILENAME);
-    let mut states = load_window_states(&window.app_handle());
-    states.insert(window.label().to_string(), state);
-
-    if let Ok(json) = serde_json::to_vec_pretty(&states) {
-        let _ = std::fs::write(state_path, json);
-    }
-}
-
-fn restore_window_state_if_ready(window: &tauri::WebviewWindow) -> bool {
-    let states = load_window_states(&window.app_handle());
-    let Some(state) = states.get(window.label()) else { return true };
-
-    let Ok(current_outer) = window.outer_size() else { return false };
-    let Ok(current_inner) = window.inner_size() else { return false };
-
-    // If decorations haven't been applied by the WM yet, outer == inner.
-    // Defer restore to after the first Resized event instead.
-    if current_outer.height <= current_inner.height {
-        return false;
-    }
-
-    let decor_w = current_outer.width.saturating_sub(current_inner.width);
-    let decor_h = current_outer.height.saturating_sub(current_inner.height);
-
-    let target_w = state.width.saturating_sub(decor_w).max(800);
-    let target_h = state.height.saturating_sub(decor_h).max(500);
-
-    let _ = window.set_size(PhysicalSize::new(target_w, target_h));
-    let _ = window.set_position(PhysicalPosition::new(state.x, state.y));
-
-    if state.maximized {
-        let _ = window.maximize();
-    }
-
-    if state.visible {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-
-    true
-}
-
 
 enum DatabaseState {
     Locked {
@@ -147,9 +46,7 @@ struct AppState {
     db_state: Arc<Mutex<DatabaseState>>,
 }
 
-fn require_unlocked<'a>(
-    db_state: &'a mut DatabaseState,
-) -> Result<&'a mut AppDatabase, AppError> {
+fn require_unlocked<'a>(db_state: &'a mut DatabaseState) -> Result<&'a mut AppDatabase, AppError> {
     match db_state {
         DatabaseState::Unlocked(db) => Ok(db),
         DatabaseState::Locked { .. } => Err(AppError::AuthenticationRequired),
@@ -251,7 +148,6 @@ async fn change_database_password(
     .map_err(|e| AppError::Database(format!("task join error: {e}")))?
 }
 
-
 #[tauri::command]
 async fn remove_database_password(
     state: tauri::State<'_, AppState>,
@@ -349,9 +245,7 @@ async fn unlock_database(
 }
 
 #[tauri::command]
-fn lock_database(
-    state: tauri::State<'_, AppState>,
-) -> Result<DatabaseStatus, AppError> {
+fn lock_database(state: tauri::State<'_, AppState>) -> Result<DatabaseStatus, AppError> {
     let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
     match &*db_state {
         DatabaseState::Unlocked(db) => {
@@ -364,9 +258,7 @@ fn lock_database(
                 last_failed_at: None,
             };
             Ok(DatabaseStatus {
-                current_path: encrypted
-                    .then(|| "".into())
-                    .unwrap_or_default(),
+                current_path: encrypted.then(|| "".into()).unwrap_or_default(),
                 encrypted,
                 locked: true,
                 failed_attempts: 0,
@@ -396,8 +288,7 @@ async fn switch_data_file(
             }
             Err(e) => {
                 let msg = e.to_string();
-                if msg.contains("authentication required")
-                    || msg.contains("authentication failed")
+                if msg.contains("authentication required") || msg.contains("authentication failed")
                 {
                     let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
                     *guard = DatabaseState::Locked {
@@ -424,8 +315,8 @@ async fn create_and_switch_data_file(
     let path = normalized_path(&input.path)?;
     let db_state = state.db_state.clone();
     tokio::task::spawn_blocking(move || {
-        let new_db = AppDatabase::create_blank_at(path)
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let new_db =
+            AppDatabase::create_blank_at(path).map_err(|e| AppError::Database(e.to_string()))?;
         let data = new_db.dashboard_data()?;
         let mut guard = db_state.lock().map_err(|_| AppError::StateLocked)?;
         *guard = DatabaseState::Unlocked(new_db);
@@ -634,20 +525,25 @@ fn save_snapshot_analysis(
 #[tauri::command]
 async fn check_update() -> Result<Option<models::CheckUpdateOutput>, AppError> {
     tokio::task::spawn_blocking(|| {
-        let response = ureq::get("https://github.com/yuannancheng/asset-snapshot/releases/download/updater/update.json")
-            .set("User-Agent", "asset-snapshot")
-            .call()
-            .map_err(|e| AppError::Database(format!("update check request failed: {e}")))?;
+        let response = ureq::get(
+            "https://github.com/yuannancheng/asset-snapshot/releases/download/updater/update.json",
+        )
+        .set("User-Agent", "asset-snapshot")
+        .call()
+        .map_err(|e| AppError::Database(format!("update check request failed: {e}")))?;
 
         let status = response.status();
         if status != 200 {
             if status == 404 {
                 return Ok(None);
             }
-            return Err(AppError::Database(format!("update check returned status {status}")));
+            return Err(AppError::Database(format!(
+                "update check returned status {status}"
+            )));
         }
 
-        let info: models::CheckUpdateOutput = response.into_json()
+        let info: models::CheckUpdateOutput = response
+            .into_json()
             .map_err(|e| AppError::Database(format!("failed to parse update.json: {e}")))?;
 
         if info.version.is_empty() {
@@ -658,7 +554,6 @@ async fn check_update() -> Result<Option<models::CheckUpdateOutput>, AppError> {
     .await
     .map_err(|e| AppError::Database(format!("task join error: {e}")))?
 }
-
 
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -681,8 +576,10 @@ pub fn run() {
                     }
                     Err(error) => {
                         if matches!(error, AppError::AuthenticationRequired) {
-                            let _ = app
-                                .emit(DATA_FILE_ENCRYPTED_EVENT, "encrypted file requires password");
+                            let _ = app.emit(
+                                DATA_FILE_ENCRYPTED_EVENT,
+                                "encrypted file requires password",
+                            );
                         } else {
                             let _ = app.emit(DATA_FILE_OPEN_ERROR_EVENT, error.to_string());
                         }
@@ -695,6 +592,7 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(AppState {
             db_state: Arc::new(Mutex::new(db_state)),
         })
@@ -729,41 +627,9 @@ pub fn run() {
             save_snapshot_analysis,
             check_update
         ])
-        .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
-                // Try immediate restore; if WM hasn't applied decorations yet
-                // we defer to the first Resized event.
-                if !restore_window_state_if_ready(&window) {
-                    let win_restore = window.clone();
-                    let win_close = window.clone();
-                    let restored = Arc::new(AtomicBool::new(false));
-                    let r_flag = restored.clone();
-                    window.on_window_event(move |e| {
-                        match e {
-                            WindowEvent::CloseRequested { .. } => {
-                                save_window_state_to_disk(&win_close);
-                            }
-                            WindowEvent::Resized(_) => {
-                                if !r_flag.swap(true, Ordering::SeqCst) {
-                                    restore_window_state_if_ready(&win_restore);
-                                }
-                            }
-                            _ => {}
-                        }
-                    });
-                } else {
-                    let win_close = window.clone();
-                    window.on_window_event(move |e| {
-                        if let WindowEvent::CloseRequested { .. } = &e {
-                            save_window_state_to_disk(&win_close);
-                        }
-                    });
-                }
-            }
-            Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building Tauri application")
+        .run(|_app, _event| {});
 }
 
 fn open_initial_database() -> Result<DatabaseState, anyhow::Error> {
@@ -798,9 +664,7 @@ fn open_or_lock_path(path: PathBuf) -> Result<DatabaseState, anyhow::Error> {
         }
         Err(e) => {
             let msg = e.to_string();
-            if msg.contains("authentication required")
-                || msg.contains("authentication failed")
-            {
+            if msg.contains("authentication required") || msg.contains("authentication failed") {
                 Ok(DatabaseState::Locked {
                     path,
                     failed_attempts: 0,
@@ -819,23 +683,15 @@ fn switch_to_data_file(app: &tauri::AppHandle, path: PathBuf) -> Result<DataFile
             next_db.remember_current_path()?;
             let info = data_file_info(&next_db);
             let state = app.state::<AppState>();
-            let mut db_state = state
-                .db_state
-                .lock()
-                .map_err(|_| AppError::StateLocked)?;
+            let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
             *db_state = DatabaseState::Unlocked(next_db);
             Ok(info)
         }
         Err(e) => {
             let msg = e.to_string();
-            if msg.contains("authentication required")
-                || msg.contains("authentication failed")
-            {
+            if msg.contains("authentication required") || msg.contains("authentication failed") {
                 let state = app.state::<AppState>();
-                let mut db_state = state
-                    .db_state
-                    .lock()
-                    .map_err(|_| AppError::StateLocked)?;
+                let mut db_state = state.db_state.lock().map_err(|_| AppError::StateLocked)?;
                 *db_state = DatabaseState::Locked {
                     path,
                     failed_attempts: 0,

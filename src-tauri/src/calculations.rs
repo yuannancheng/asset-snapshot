@@ -53,7 +53,12 @@ pub fn calculate_snapshot(items: &[SnapshotItemForCalc]) -> CalculatedSnapshot {
 mod tests {
     use super::*;
 
-    fn item(platform_id: i64, platform_name: &str, account_type: AccountType, amount: &str) -> SnapshotItemForCalc {
+    fn item(
+        platform_id: i64,
+        platform_name: &str,
+        account_type: AccountType,
+        amount: &str,
+    ) -> SnapshotItemForCalc {
         SnapshotItemForCalc {
             platform_id,
             platform_name: platform_name.to_string(),
@@ -121,9 +126,17 @@ mod tests {
         assert_eq!(result.total_asset, "17000.00");
         assert_eq!(result.available_asset, "12000.00");
         assert_eq!(result.platform_assets.len(), 2);
-        let alipay = result.platform_assets.iter().find(|p| p.platform_id == 1).unwrap();
+        let alipay = result
+            .platform_assets
+            .iter()
+            .find(|p| p.platform_id == 1)
+            .unwrap();
         assert_eq!(alipay.amount, "8000.00");
-        let cmb = result.platform_assets.iter().find(|p| p.platform_id == 2).unwrap();
+        let cmb = result
+            .platform_assets
+            .iter()
+            .find(|p| p.platform_id == 2)
+            .unwrap();
         assert_eq!(cmb.amount, "9000.00");
     }
 
@@ -169,7 +182,11 @@ mod tests {
             item(2, "招商银行", AccountType::AssetLiquid, "300.00"),
         ];
         let result = calculate_snapshot(&items);
-        let ids: Vec<i64> = result.platform_assets.iter().map(|p| p.platform_id).collect();
+        let ids: Vec<i64> = result
+            .platform_assets
+            .iter()
+            .map(|p| p.platform_id)
+            .collect();
         assert_eq!(ids, vec![1, 2, 3]);
     }
 }

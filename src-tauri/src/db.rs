@@ -2,10 +2,11 @@ use crate::calculations::calculate_snapshot;
 use crate::models::{
     Account, AccountType, AnalysisItem, AnalysisItemType, AppError, CreateAccountInput,
     CreatePlatformInput, CreateSnapshotInput, DashboardData, DeleteAccountInput,
-    DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, MoveAccountInput,
-    MoveDirection, MovePlatformInput, Platform, Snapshot, SnapshotAnalysis, SnapshotItem,
-    SnapshotItemForCalc, SnapshotSummary, GetSnapshotsPageInput, PaginatedSnapshots, UpdateAccountActiveInput, UpdateAccountInput,
-    UpdatePlatformInput, UpdateSnapshotInput, UpdateAccountPlatformInput, UpdateAccountTypeInput,
+    DeletePlatformInput, DeleteSnapshotInput, GetSnapshotAnalysisInput, GetSnapshotsPageInput,
+    MoveAccountInput, MoveDirection, MovePlatformInput, PaginatedSnapshots, Platform, Snapshot,
+    SnapshotAnalysis, SnapshotItem, SnapshotItemForCalc, SnapshotSummary, UpdateAccountActiveInput,
+    UpdateAccountInput, UpdateAccountPlatformInput, UpdateAccountTypeInput, UpdatePlatformInput,
+    UpdateSnapshotInput,
 };
 use anyhow::{Context, Result};
 use chrono::NaiveDate;
@@ -52,11 +53,9 @@ impl AppDatabase {
 
         // Verify database is readable by checking sqlite_master.
         // For encrypted databases opened without a key, this will fail.
-        let verify_result = conn.query_row(
-            "SELECT count(*) FROM sqlite_master",
-            [],
-            |row| row.get::<_, i64>(0),
-        );
+        let verify_result = conn.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        });
 
         match verify_result {
             Ok(_) => {}
@@ -79,7 +78,11 @@ impl AppDatabase {
         }
 
         let encrypted = password.is_some();
-        let db = Self { conn, path, encrypted };
+        let db = Self {
+            conn,
+            path,
+            encrypted,
+        };
         db.migrate()?;
         db.seed_if_empty()?;
         Ok(db)
@@ -100,7 +103,9 @@ impl AppDatabase {
             ));
         }
         if self.encrypted {
-            return Err(AppError::Validation("数据库已加密，请使用修改密码功能".into()));
+            return Err(AppError::Validation(
+                "数据库已加密，请使用修改密码功能".into(),
+            ));
         }
 
         // Use sqlcipher_export to create an encrypted copy of the plaintext database.
@@ -168,26 +173,25 @@ impl AppDatabase {
             Ok(header) if header.len() >= 16 && &header[0..16] == b"SQLite format 3\0" => {
                 let _ = std::fs::remove_file(&tmp_path);
                 return Err(AppError::Database(
-                    "数据库加密未生效：文件头仍为明文 SQLite 格式。请确认 SQLCipher 已正确编译。".into(),
+                    "数据库加密未生效：文件头仍为明文 SQLite 格式。请确认 SQLCipher 已正确编译。"
+                        .into(),
                 ));
             }
             Err(e) => {
                 let _ = std::fs::remove_file(&tmp_path);
-                return Err(AppError::Database(format!("无法读取数据库文件以验证加密: {e}")));
+                return Err(AppError::Database(format!(
+                    "无法读取数据库文件以验证加密: {e}"
+                )));
             }
             _ => {} // Header is not plaintext — encryption succeeded
         }
 
         // Verify the database is readable with the new key
         self.conn
-            .query_row(
-                "SELECT count(*) FROM sqlite_master",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .map_err(|e| {
-                AppError::Database(format!("加密后数据库验证失败: {e}"))
-            })?;
+            .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(|e| AppError::Database(format!("加密后数据库验证失败: {e}")))?;
 
         self.encrypted = true;
         self.remember_current_path()?;
@@ -211,7 +215,6 @@ impl AppDatabase {
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
-
 
     pub fn remove_password(&mut self) -> Result<(), AppError> {
         if !self.encrypted {
@@ -276,21 +279,15 @@ impl AppDatabase {
 
         // Verify database is still readable after decryption
         self.conn
-            .query_row(
-                "SELECT count(*) FROM sqlite_master",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .map_err(|e| {
-                AppError::Database(format!("解密后数据库验证失败: {e}"))
-            })?;
+            .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(|e| AppError::Database(format!("解密后数据库验证失败: {e}")))?;
 
         self.encrypted = false;
         self.remember_current_path()?;
         Ok(())
     }
-
-
 
     pub fn remember_current_path(&self) -> Result<(), AppError> {
         let path = app_config_path()?;
@@ -331,14 +328,12 @@ impl AppDatabase {
 
     pub fn create_blank_at(path: PathBuf) -> Result<Self> {
         if path.exists() {
-            fs::remove_file(&path).with_context(|| {
-                format!("failed to remove existing file at {}", path.display())
-            })?;
+            fs::remove_file(&path)
+                .with_context(|| format!("failed to remove existing file at {}", path.display()))?;
         }
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create directory {}", parent.display())
-            })?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
         }
         let db = Self::open_path(path, None)?;
         db.remember_current_path()
@@ -346,14 +341,12 @@ impl AppDatabase {
         Ok(db)
     }
 
-
     pub fn all_analyses(&self) -> Result<Vec<SnapshotAnalysis>, AppError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, snapshot_id FROM snapshot_analysis ORDER BY snapshot_id"
-        )?;
-        let analysis_rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-        })?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, snapshot_id FROM snapshot_analysis ORDER BY snapshot_id")?;
+        let analysis_rows =
+            stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))?;
 
         let mut result = Vec::new();
         for analysis_row in analysis_rows {
@@ -382,10 +375,7 @@ impl AppDatabase {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-            result.push(SnapshotAnalysis {
-                snapshot_id,
-                items,
-            });
+            result.push(SnapshotAnalysis { snapshot_id, items });
         }
         Ok(result)
     }
@@ -400,12 +390,13 @@ impl AppDatabase {
         })
     }
 
-    pub fn get_snapshots_page(&self, input: GetSnapshotsPageInput) -> Result<PaginatedSnapshots, AppError> {
-        let total_count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM snapshots",
-            [],
-            |row| row.get(0),
-        )?;
+    pub fn get_snapshots_page(
+        &self,
+        input: GetSnapshotsPageInput,
+    ) -> Result<PaginatedSnapshots, AppError> {
+        let total_count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))?;
 
         let snapshots = self.paginated_snapshots(input.limit, input.offset)?;
         let summaries = self.paginated_snapshot_summaries(input.limit, input.offset)?;
@@ -477,7 +468,11 @@ impl AppDatabase {
         let transaction = self.conn.transaction()?;
         transaction.execute(
             "INSERT INTO snapshots (date, snapshot_time, note) VALUES (?1, ?2, ?3)",
-            params![date, input.snapshot_time.as_deref().unwrap_or("00:00"), normalized_note(input.note.as_deref())],
+            params![
+                date,
+                input.snapshot_time.as_deref().unwrap_or("00:00"),
+                normalized_note(input.note.as_deref())
+            ],
         )?;
         let snapshot_id = transaction.last_insert_rowid();
 
@@ -608,7 +603,10 @@ impl AppDatabase {
         }
         Ok(())
     }
-    pub fn update_account_platform(&self, input: UpdateAccountPlatformInput) -> Result<(), AppError> {
+    pub fn update_account_platform(
+        &self,
+        input: UpdateAccountPlatformInput,
+    ) -> Result<(), AppError> {
         let platform_exists: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM platforms WHERE id = ?1",
             params![input.platform_id],
@@ -911,7 +909,6 @@ impl AppDatabase {
     }
 
     fn seed_if_empty(&self) -> Result<()> {
-
         let count: i64 = self
             .conn
             .query_row("SELECT COUNT(*) FROM platforms", [], |row| row.get(0))?;
@@ -1070,9 +1067,9 @@ impl AppDatabase {
     }
 
     fn snapshots(&self) -> Result<Vec<Snapshot>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, date, snapshot_time, note FROM snapshots ORDER BY date ASC, id ASC")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT id, date, snapshot_time, note FROM snapshots ORDER BY date ASC, id ASC",
+        )?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -1125,10 +1122,14 @@ impl AppDatabase {
             .collect()
     }
 
-    fn paginated_snapshot_summaries(&self, limit: i64, offset: i64) -> Result<Vec<SnapshotSummary>, AppError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, date FROM snapshots ORDER BY date DESC, id DESC LIMIT ?1 OFFSET ?2")?;
+    fn paginated_snapshot_summaries(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<SnapshotSummary>, AppError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, date FROM snapshots ORDER BY date DESC, id DESC LIMIT ?1 OFFSET ?2",
+        )?;
         let snapshot_rows = stmt.query_map(params![limit, offset], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })?;
@@ -1154,12 +1155,19 @@ impl AppDatabase {
         if snapshot_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let placeholders: Vec<String> = snapshot_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+        let placeholders: Vec<String> = snapshot_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
         let sql = format!(
             "SELECT id, snapshot_id FROM snapshot_analysis WHERE snapshot_id IN ({}) ORDER BY snapshot_id",
             placeholders.join(", ")
         );
-        let params: Vec<&dyn rusqlite::types::ToSql> = snapshot_ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+        let params: Vec<&dyn rusqlite::types::ToSql> = snapshot_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::types::ToSql)
+            .collect();
         let mut stmt = self.conn.prepare(&sql)?;
         let analysis_rows = stmt.query_map(params.as_slice(), |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
@@ -1192,10 +1200,7 @@ impl AppDatabase {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-            result.push(SnapshotAnalysis {
-                snapshot_id,
-                items,
-            });
+            result.push(SnapshotAnalysis { snapshot_id, items });
         }
         Ok(result)
     }
@@ -1410,7 +1415,6 @@ mod tests {
     use crate::models::CreateSnapshotItemInput;
     use rusqlite::Connection;
 
-
     fn test_db() -> AppDatabase {
         let conn = Connection::open_in_memory().unwrap();
         let db = AppDatabase {
@@ -1439,8 +1443,14 @@ mod tests {
     #[test]
     fn create_and_list_platforms() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "支付宝".into() }).unwrap();
-        db.create_platform(CreatePlatformInput { name: "招商银行".into() }).unwrap();
+        db.create_platform(CreatePlatformInput {
+            name: "支付宝".into(),
+        })
+        .unwrap();
+        db.create_platform(CreatePlatformInput {
+            name: "招商银行".into(),
+        })
+        .unwrap();
         let platforms = db.platforms().unwrap();
         assert_eq!(platforms.len(), 2);
         assert_eq!(platforms[0].name, "支付宝");
@@ -1450,9 +1460,17 @@ mod tests {
     #[test]
     fn update_platform_name() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "支付宝".into() }).unwrap();
+        db.create_platform(CreatePlatformInput {
+            name: "支付宝".into(),
+        })
+        .unwrap();
         let platforms = db.platforms().unwrap();
-        db.update_platform(UpdatePlatformInput { platform_id: platforms[0].id, name: "蚂蚁财富".into(), color: None }).unwrap();
+        db.update_platform(UpdatePlatformInput {
+            platform_id: platforms[0].id,
+            name: "蚂蚁财富".into(),
+            color: None,
+        })
+        .unwrap();
         let platforms = db.platforms().unwrap();
         assert_eq!(platforms[0].name, "蚂蚁财富");
     }
@@ -1460,15 +1478,21 @@ mod tests {
     #[test]
     fn move_platform_sort_order() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "A".into() }).unwrap();
-        db.create_platform(CreatePlatformInput { name: "B".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "A".into() })
+            .unwrap();
+        db.create_platform(CreatePlatformInput { name: "B".into() })
+            .unwrap();
         let platform_b_id = {
             let platforms = db.platforms().unwrap();
             assert_eq!(platforms[0].name, "A");
             assert_eq!(platforms[1].name, "B");
             platforms[1].id
         };
-        db.move_platform(MovePlatformInput { platform_id: platform_b_id, direction: MoveDirection::Up }).unwrap();
+        db.move_platform(MovePlatformInput {
+            platform_id: platform_b_id,
+            direction: MoveDirection::Up,
+        })
+        .unwrap();
         let platforms = db.platforms().unwrap();
         assert_eq!(platforms[0].name, "B");
         assert_eq!(platforms[1].name, "A");
@@ -1477,11 +1501,27 @@ mod tests {
     #[test]
     fn create_account_with_type() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "P".into() })
+            .unwrap();
         let platforms = db.platforms().unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "理财".into(), account_type: AccountType::AssetNonliquid }).unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "花呗".into(), account_type: AccountType::Debt }).unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "余额".into(),
+            account_type: AccountType::AssetLiquid,
+        })
+        .unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "理财".into(),
+            account_type: AccountType::AssetNonliquid,
+        })
+        .unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "花呗".into(),
+            account_type: AccountType::Debt,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         assert_eq!(accounts.len(), 3);
         assert_eq!(accounts[0].account_type, AccountType::AssetLiquid);
@@ -1492,12 +1532,22 @@ mod tests {
     #[test]
     fn deactivate_account_excludes_from_active() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "P".into() })
+            .unwrap();
         let platforms = db.platforms().unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "余额".into(),
+            account_type: AccountType::AssetLiquid,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         assert!(accounts[0].is_active);
-        db.update_account_active(UpdateAccountActiveInput { account_id: accounts[0].id, is_active: false }).unwrap();
+        db.update_account_active(UpdateAccountActiveInput {
+            account_id: accounts[0].id,
+            is_active: false,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         assert!(!accounts[0].is_active);
     }
@@ -1505,20 +1555,38 @@ mod tests {
     #[test]
     fn create_snapshot_and_recalculate() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "P".into() })
+            .unwrap();
         let platforms = db.platforms().unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "花呗".into(), account_type: AccountType::Debt }).unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "余额".into(),
+            account_type: AccountType::AssetLiquid,
+        })
+        .unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "花呗".into(),
+            account_type: AccountType::Debt,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
             date: "2026-06-01".into(),
             snapshot_time: None,
             note: Some("测试快照".into()),
             items: vec![
-                CreateSnapshotItemInput { account_id: accounts[0].id, amount: "10000.00".into() },
-                CreateSnapshotItemInput { account_id: accounts[1].id, amount: "2000.00".into() },
+                CreateSnapshotItemInput {
+                    account_id: accounts[0].id,
+                    amount: "10000.00".into(),
+                },
+                CreateSnapshotItemInput {
+                    account_id: accounts[1].id,
+                    amount: "2000.00".into(),
+                },
             ],
-        }).unwrap();
+        })
+        .unwrap();
         let summaries = db.snapshot_summaries().unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].total_asset, "8000.00");
@@ -1528,43 +1596,75 @@ mod tests {
     #[test]
     fn delete_snapshot_removes_items() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "P".into() })
+            .unwrap();
         let platforms = db.platforms().unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "余额".into(),
+            account_type: AccountType::AssetLiquid,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
-            date: "2026-06-01".into(), note: None,
+            date: "2026-06-01".into(),
+            note: None,
             snapshot_time: None,
-            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
-        }).unwrap();
+            items: vec![CreateSnapshotItemInput {
+                account_id: accounts[0].id,
+                amount: "5000.00".into(),
+            }],
+        })
+        .unwrap();
         let snapshots = db.snapshots().unwrap();
-        db.delete_snapshot(DeleteSnapshotInput { snapshot_id: snapshots[0].id }).unwrap();
+        db.delete_snapshot(DeleteSnapshotInput {
+            snapshot_id: snapshots[0].id,
+        })
+        .unwrap();
         let snapshots = db.snapshots().unwrap();
         assert!(snapshots.is_empty());
-        let item_count: i64 = db.conn.query_row("SELECT count(*) FROM snapshot_items", [], |row| row.get(0)).unwrap();
+        let item_count: i64 = db
+            .conn
+            .query_row("SELECT count(*) FROM snapshot_items", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(item_count, 0);
     }
 
     #[test]
     fn update_snapshot_changes_items() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "P".into() })
+            .unwrap();
         let platforms = db.platforms().unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "余额".into(),
+            account_type: AccountType::AssetLiquid,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
-            date: "2026-06-01".into(), note: None,
+            date: "2026-06-01".into(),
+            note: None,
             snapshot_time: None,
-            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
-        }).unwrap();
+            items: vec![CreateSnapshotItemInput {
+                account_id: accounts[0].id,
+                amount: "5000.00".into(),
+            }],
+        })
+        .unwrap();
         let snapshots = db.snapshots().unwrap();
         db.update_snapshot(UpdateSnapshotInput {
             snapshot_id: snapshots[0].id,
             date: "2026-06-15".into(),
             snapshot_time: None,
             note: Some("更新".into()),
-            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "8000.00".into() }],
-        }).unwrap();
+            items: vec![CreateSnapshotItemInput {
+                account_id: accounts[0].id,
+                amount: "8000.00".into(),
+            }],
+        })
+        .unwrap();
         let snapshots = db.snapshots().unwrap();
         assert_eq!(snapshots[0].date, "2026-06-15");
         assert_eq!(snapshots[0].note.as_deref(), Some("更新"));
@@ -1574,21 +1674,41 @@ mod tests {
     #[test]
     fn snapshot_analysis_save_and_load() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "P".into() })
+            .unwrap();
         let platforms = db.platforms().unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "余额".into(),
+            account_type: AccountType::AssetLiquid,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
-            date: "2026-06-01".into(), note: None,
+            date: "2026-06-01".into(),
+            note: None,
             snapshot_time: None,
-            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "10000.00".into() }],
-        }).unwrap();
+            items: vec![CreateSnapshotItemInput {
+                account_id: accounts[0].id,
+                amount: "10000.00".into(),
+            }],
+        })
+        .unwrap();
         let snapshots = db.snapshots().unwrap();
         db.save_snapshot_analysis(SnapshotAnalysis {
             snapshot_id: snapshots[0].id,
-            items: vec![AnalysisItem { item_type: AnalysisItemType::Income, name: "工资".into(), amounts: vec!["5000.00".into()] }],
-        }).unwrap();
-        let analysis = db.snapshot_analysis(GetSnapshotAnalysisInput { snapshot_id: snapshots[0].id }).unwrap();
+            items: vec![AnalysisItem {
+                item_type: AnalysisItemType::Income,
+                name: "工资".into(),
+                amounts: vec!["5000.00".into()],
+            }],
+        })
+        .unwrap();
+        let analysis = db
+            .snapshot_analysis(GetSnapshotAnalysisInput {
+                snapshot_id: snapshots[0].id,
+            })
+            .unwrap();
         assert_eq!(analysis.items.len(), 1);
         assert_eq!(analysis.items[0].name, "工资");
         assert_eq!(analysis.items[0].amounts, vec!["5000.00"]);
@@ -1621,22 +1741,39 @@ mod tests {
 
     #[test]
     fn validate_snapshot_items_rejects_bad_amount() {
-        assert!(validate_snapshot_items(&[CreateSnapshotItemInput { account_id: 1, amount: "abc".into() }]).is_err());
+        assert!(validate_snapshot_items(&[CreateSnapshotItemInput {
+            account_id: 1,
+            amount: "abc".into()
+        }])
+        .is_err());
     }
 
     #[test]
     fn validate_snapshot_items_accepts_valid() {
-        assert!(validate_snapshot_items(&[CreateSnapshotItemInput { account_id: 1, amount: "5000.00".into() }]).is_ok());
+        assert!(validate_snapshot_items(&[CreateSnapshotItemInput {
+            account_id: 1,
+            amount: "5000.00".into()
+        }])
+        .is_ok());
     }
 
     #[test]
     fn delete_account_without_history_succeeds() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "P".into() })
+            .unwrap();
         let platforms = db.platforms().unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "余额".into(),
+            account_type: AccountType::AssetLiquid,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
-        db.delete_account(DeleteAccountInput { account_id: accounts[0].id }).unwrap();
+        db.delete_account(DeleteAccountInput {
+            account_id: accounts[0].id,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         assert!(accounts.is_empty());
     }
@@ -1644,15 +1781,29 @@ mod tests {
     #[test]
     fn delete_account_with_history_rejected() {
         let mut db = test_db();
-        db.create_platform(CreatePlatformInput { name: "P".into() }).unwrap();
+        db.create_platform(CreatePlatformInput { name: "P".into() })
+            .unwrap();
         let platforms = db.platforms().unwrap();
-        db.create_account(CreateAccountInput { platform_id: platforms[0].id, name: "余额".into(), account_type: AccountType::AssetLiquid }).unwrap();
+        db.create_account(CreateAccountInput {
+            platform_id: platforms[0].id,
+            name: "余额".into(),
+            account_type: AccountType::AssetLiquid,
+        })
+        .unwrap();
         let accounts = db.accounts().unwrap();
         db.create_snapshot(CreateSnapshotInput {
-            date: "2026-06-01".into(), note: None,
+            date: "2026-06-01".into(),
+            note: None,
             snapshot_time: None,
-            items: vec![CreateSnapshotItemInput { account_id: accounts[0].id, amount: "5000.00".into() }],
-        }).unwrap();        let result = db.delete_account(DeleteAccountInput { account_id: accounts[0].id });
+            items: vec![CreateSnapshotItemInput {
+                account_id: accounts[0].id,
+                amount: "5000.00".into(),
+            }],
+        })
+        .unwrap();
+        let result = db.delete_account(DeleteAccountInput {
+            account_id: accounts[0].id,
+        });
         assert!(result.is_err());
     }
 }

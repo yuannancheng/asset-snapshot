@@ -70,13 +70,13 @@ pub fn register_mime_type() {
     let icons_base = data_dir.join("icons").join("hicolor");
     let icon_entries: &[(&str, &[u8])] = &[
         ("scalable/mimetypes", ICON_SVG),
-        ("16x16/mimetypes",    ICON_16),
-        ("24x24/mimetypes",    ICON_24),
-        ("32x32/mimetypes",    ICON_32),
-        ("48x48/mimetypes",    ICON_48),
-        ("64x64/mimetypes",    ICON_64),
-        ("128x128/mimetypes",  ICON_128),
-        ("256x256/mimetypes",  ICON_256),
+        ("16x16/mimetypes", ICON_16),
+        ("24x24/mimetypes", ICON_24),
+        ("32x32/mimetypes", ICON_32),
+        ("48x48/mimetypes", ICON_48),
+        ("64x64/mimetypes", ICON_64),
+        ("128x128/mimetypes", ICON_128),
+        ("256x256/mimetypes", ICON_256),
     ];
 
     let need_icon_update = icon_entries.iter().any(|(dir, _)| {
@@ -106,7 +106,6 @@ pub fn register_mime_type() {
             let _ = std::fs::write(&dest, data);
         }
     }
-
 
     // --- Yaru icon installation (Ubuntu Nautilus hicolor fallback broken, gnome #3341) ---
     {
@@ -141,7 +140,10 @@ pub fn register_mime_type() {
     }
     // --- Cache updates ---
     try_run("update-mime-database", &[data_dir.join("mime").as_path()]);
-    try_run("update-desktop-database", &[data_dir.join("applications").as_path()]);
+    try_run(
+        "update-desktop-database",
+        &[data_dir.join("applications").as_path()],
+    );
     try_run("gtk-update-icon-cache", &[icons_base.as_path()]);
     try_run("gtk4-update-icon-cache", &[icons_base.as_path()]);
 }

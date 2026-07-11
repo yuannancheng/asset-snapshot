@@ -16,6 +16,8 @@
         "title": "资产快照",
         "width": 1180,
         "height": 780,
+        "center": true,
+        "visible": false,
         "minWidth": 800,
         "minHeight": 500
       }

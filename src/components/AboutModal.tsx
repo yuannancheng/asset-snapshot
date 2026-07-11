@@ -49,12 +49,18 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
   const checkUpdate = useCallback(async () => {
     if (checkState === "loading") return;
 
-    let cached: { remote: string; url: string; time: number } | null = null;
+    let cached: { current: string; remote: string; url: string; time: number } | null = null;
     const cachedRaw = localStorage.getItem(CACHE_KEY);
     if (cachedRaw) {
       try {
         cached = JSON.parse(cachedRaw);
       } catch { /* ignore corrupted cache */ }
+    }
+
+    // A newly installed app must not reuse the previous version's result.
+    if (cached && cached.current !== pkg.version) {
+      cached = null;
+      localStorage.removeItem(CACHE_KEY);
     }
 
     if (cached && Date.now() - cached.time < CACHE_TTL) {
@@ -84,7 +90,7 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
       setReleaseUrl(data.htmlUrl);
       setCheckState(remote !== pkg.version ? "has-update" : "no-update");
       try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ remote, url: data.htmlUrl, time: Date.now() }));
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ current: pkg.version, remote, url: data.htmlUrl, time: Date.now() }));
       } catch { /* storage full */ }
     } catch (err) {
       if (!cached) {
@@ -104,6 +110,8 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
 
   const goToRelease = () => {
     const url = releaseUrl || `${REPO_URL}/releases/latest`;
+    setCheckState("no-update");
+    onClose();
     openUrl(url).catch(() => {
       window.open(url, "_blank", "noopener,noreferrer");
     });
@@ -190,7 +198,7 @@ export function AboutModal({ open, onClose, showToast }: AboutModalProps) {
             <button
               type="button"
               onClick={goToRelease}
-              className="rounded-md bg-mint/60 px-3 py-1.5 text-sm font-medium text-moss transition hover:bg-mint/80 cursor-pointer"
+              className="rounded-md bg-ink px-3 py-1.5 text-sm font-medium text-app transition hover:bg-moss active:bg-ink focus:outline-none focus:ring-2 focus:ring-coral/40 cursor-pointer"
             >
               {t("about.goToRelease")}
             </button>

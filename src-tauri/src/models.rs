@@ -143,7 +143,6 @@ pub struct DashboardData {
     pub analyses: Vec<SnapshotAnalysis>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSnapshotsPageInput {
@@ -340,7 +339,6 @@ pub struct SwitchDataFileInput {
 pub struct BackupDataFileInput {
     pub path: String,
 }
-
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
