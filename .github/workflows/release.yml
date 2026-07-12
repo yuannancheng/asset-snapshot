@@ -65,6 +65,7 @@ jobs:
 
       - name: Generate release notes
         id: notes
+        shell: bash
         run: |
           NOTES_FILE="${{ runner.temp }}/release-notes.md"
           .github/scripts/gen-release-notes.sh "$NOTES_FILE"
