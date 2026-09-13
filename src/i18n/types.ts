@@ -69,6 +69,10 @@ export interface Translations {
     snapshotNotFound: string;
     confirmDelete: string;
     switchedViaFile: string;
+    recentAmount: string;
+    fillRecentAmount: string;
+    recentAmountTitle: string;
+    recentAmountTimeTitle: string;
   };
   analysis: {
     title: string;
@@ -86,6 +90,9 @@ export interface Translations {
     noExpense: string;
     addIncome: string;
     addExpense: string;
+    recurringHint: string;
+    importRecurring: string;
+    recurringImported: string;
     incomeName: string;
     expenseName: string;
     amount: string;

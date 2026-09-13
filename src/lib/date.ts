@@ -45,6 +45,16 @@ export function formatDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Combine a snapshot date and time into one label, e.g. `2026-09-13 14:30`.
+ * A missing time, or the `00:00` default, is treated as unset and omitted.
+ */
+export function formatSnapshotMoment(date: string, time?: string | null) {
+  const value = time?.trim();
+  if (!value || value === "00:00") return date;
+  return `${date} ${value}`;
+}
+
 export function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }

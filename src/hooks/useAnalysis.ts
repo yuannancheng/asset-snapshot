@@ -7,17 +7,21 @@ import {
   explainedAmount,
   normalizeAnalysisItems,
   previousSummaryFor,
+  RECURRING_SNAPSHOT_WINDOW,
+  recurringAnalysisItems,
 } from "../lib/assetCalculator";
 import { roundMoney } from "../lib/format";
-import type { AnalysisItem, SnapshotSummary } from "../lib/types";
+import type { AnalysisItem, SnapshotAnalysis, SnapshotSummary } from "../lib/types";
 
 export function useAnalysis({
   summaries,
+  analyses,
   showToast,
   setSaving,
   onSaved,
 }: {
   summaries: SnapshotSummary[];
+  analyses: SnapshotAnalysis[];
   showToast: (text: string, kind: "success" | "error") => void;
   setSaving: (saving: boolean) => void;
   onSaved?: () => void;
@@ -108,6 +112,21 @@ export function useAnalysis({
     setAnalysisItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  // Items that repeat in the recent snapshots and are not in the current one yet.
+  const recurringItems = useMemo(
+    () =>
+      analysisSnapshotId
+        ? recurringAnalysisItems(summaries, analyses, analysisSnapshotId, analysisItems)
+        : [],
+    [summaries, analyses, analysisSnapshotId, analysisItems],
+  );
+
+  const importRecurringItems = () => {
+    if (recurringItems.length === 0) return;
+    setAnalysisItems((current) => [...current, ...recurringItems]);
+    showToast(i18n.t("analysis.recurringImported", { count: recurringItems.length }), "success");
+  };
+
   const closeAnalysisModal = () => {
     setAnalysisOpen(false);
     setAnalysisSnapshotId(null);
@@ -134,6 +153,8 @@ export function useAnalysis({
     analysisOpen,
     analysisSnapshotId,
     analysisItems,
+    recurringItems,
+    recurringWindow: RECURRING_SNAPSHOT_WINDOW,
     analysisSummary,
     analysisPrevious,
     analysisChange,
@@ -144,6 +165,7 @@ export function useAnalysis({
     addAnalysisItem,
     updateAnalysisItem,
     removeAnalysisItem,
+    importRecurringItems,
     closeAnalysisModal,
   };
 }

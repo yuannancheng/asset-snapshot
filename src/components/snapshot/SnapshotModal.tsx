@@ -4,10 +4,11 @@ import { useTranslation } from "react-i18next";
 import { Button } from "../Button";
 import { DatePicker } from "../DatePicker";
 import { Input, Label } from "../Field";
-import { sanitizeAmount } from "../../lib/format";
+import { money, sanitizeAmount } from "../../lib/format";
 import { Modal } from "../Modal";
 import { accountTypeLabel, getAccountTypeOptions } from "../../lib/constants";
 import type { Account, Platform } from "../../lib/types";
+import type { RecentAmount } from "../../hooks/useSnapshotForm";
 
 type SnapshotForm = {
   date: string;
@@ -23,6 +24,7 @@ export function SnapshotModal({
   snapshotForm,
   setSnapshotForm,
   snapshotAccounts,
+  recentAmounts,
   submitSnapshot,
   saving,
   platforms,
@@ -35,6 +37,7 @@ export function SnapshotModal({
   snapshotForm: SnapshotForm;
   setSnapshotForm: (updater: (current: SnapshotForm) => SnapshotForm) => void;
   snapshotAccounts: Account[];
+  recentAmounts: Record<number, RecentAmount>;
   submitSnapshot: (event: FormEvent) => Promise<void>;
   saving: boolean;
   platforms: Platform[];
@@ -47,6 +50,17 @@ export function SnapshotModal({
   const amountRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   const lastAccountIdx = snapshotAccounts.length - 1;
+
+  const fillRecentAmount = (accountId: number, amount: string) => {
+    setSnapshotForm((current) => ({
+      ...current,
+      amounts: {
+        ...current.amounts,
+        [accountId]: amount.trim(),
+      },
+    }));
+    amountRefs.current[accountId]?.focus();
+  };
 
   const focusNextAmount = (currentIdx: number) => {
     const nextAccount = snapshotAccounts[currentIdx + 1];
@@ -168,10 +182,11 @@ export function SnapshotModal({
             const platform = platforms.find((item) => item.id === account.platformId);
             const pIdx = platforms.findIndex((p) => p.id === account.platformId);
             const isLast = idx === lastAccountIdx;
+            const recent = recentAmounts[account.id];
             return (
               <div
                 key={account.id}
-                className="grid gap-3 rounded-lg border border-ink/10 p-3 sm:grid-cols-[1fr_180px]"
+                className="grid gap-3 rounded-lg border border-ink/10 p-3 sm:grid-cols-[1fr_200px]"
               >
                 <div className="flex items-center gap-2">
                   <span
@@ -185,29 +200,52 @@ export function SnapshotModal({
                     </p>
                   </div>
                 </div>
-                <Input
-                  selectOnFocus
-                  inputMode="decimal"
-                  min="0"
-                  ref={(el) => { amountRefs.current[account.id] = el; }}
-                  value={snapshotForm.amounts[account.id] ?? "0"}
-                  onChange={(event) =>
-                    setSnapshotForm((current) => ({
-                      ...current,
-                      amounts: {
-                        ...current.amounts,
-                        [account.id]: sanitizeAmount(event.target.value),
-                      },
-                    }))
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !isLast) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      focusNextAmount(idx);
+                <div className="space-y-1">
+                  <Input
+                    selectOnFocus
+                    inputMode="decimal"
+                    min="0"
+                    ref={(el) => { amountRefs.current[account.id] = el; }}
+                    value={snapshotForm.amounts[account.id] ?? "0"}
+                    onChange={(event) =>
+                      setSnapshotForm((current) => ({
+                        ...current,
+                        amounts: {
+                          ...current.amounts,
+                          [account.id]: sanitizeAmount(event.target.value),
+                        },
+                      }))
                     }
-                  }}
-                />
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !isLast) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        focusNextAmount(idx);
+                      }
+                    }}
+                  />
+                  {recent ? (
+                    <div
+                      className="flex flex-wrap items-center justify-end gap-x-1.5 text-xs text-ink/50"
+                      title={
+                        recent.time && recent.time !== "00:00"
+                          ? t("snapshot.recentAmountTimeTitle", { date: recent.date, time: recent.time })
+                          : t("snapshot.recentAmountTitle", { date: recent.date })
+                      }
+                    >
+                      <span className="min-w-0 truncate">
+                        {t("snapshot.recentAmount", { amount: money(recent.amount) })}
+                      </span>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded font-medium text-moss underline decoration-moss/40 underline-offset-2 transition hover:decoration-moss focus:outline-none focus:ring-2 focus:ring-moss/30"
+                        onClick={() => fillRecentAmount(account.id, recent.amount)}
+                      >
+                        {t("snapshot.fillRecentAmount")}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             );
           })}

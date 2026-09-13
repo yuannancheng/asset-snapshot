@@ -128,6 +128,7 @@ pub struct Snapshot {
 pub struct SnapshotSummary {
     pub snapshot_id: i64,
     pub date: String,
+    pub snapshot_time: Option<String>,
     pub total_asset: String,
     pub available_asset: String,
     pub platform_assets: Vec<PlatformAsset>,

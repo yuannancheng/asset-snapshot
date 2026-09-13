@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  productbuild 分发包定义。
+  下面用双下划线包裹的占位符（版本、包标识、支持架构、最低系统版本）
+  由 scripts/build-macos-pkg.sh 替换后再交给 productbuild。
+-->
+<installer-gui-script minSpecVersion="2">
+    <title>资产快照</title>
+    <organization>__PKG_ID__</organization>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true" />
+    <options customize="never" require-scripts="false" rootVolumeOnly="true" hostArchitectures="__HOST_ARCH__" />
+    <allowed-os-versions>
+        <os-version min="__MIN_OS__" />
+    </allowed-os-versions>
+    <welcome file="welcome.html" mime-type="text/html" />
+    <license file="license.txt" mime-type="text/plain" />
+    <pkg-ref id="__PKG_ID__" />
+    <choices-outline>
+        <line choice="default">
+            <line choice="__PKG_ID__" />
+        </line>
+    </choices-outline>
+    <choice id="default" />
+    <choice id="__PKG_ID__" visible="false">
+        <pkg-ref id="__PKG_ID__" />
+    </choice>
+    <pkg-ref id="__PKG_ID__" version="__VERSION__" onConclusion="none">component.pkg</pkg-ref>
+</installer-gui-script>

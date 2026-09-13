@@ -97,12 +97,17 @@ export default function App() {
 
   const [pageData, setPageData] = useState<PaginatedSnapshots>({ snapshots: [], summaries: [], analyses: [], totalCount: 0 });
   const [pageVersion, setPageVersion] = useState(0);
-  const pageLoadingRef = useRef(false);
 
   const refreshPage = useCallback(() => {
     setCurrentPage(1);
     setPageVersion((v) => v + 1);
   }, []);
+
+  // Saved analysis items feed the recurring-item suggestions of the next
+  // snapshot, so refresh the dashboard data whenever they change.
+  const invalidateDashboard = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["dashboardData"] });
+  }, [queryClient]);
 
   const showToast = useCallback((text: string, kind: "success" | "error") => {
     setToast({ text, kind });
@@ -198,6 +203,7 @@ export default function App() {
           setLocked(false);
           queryClient.invalidateQueries({ queryKey: ["dashboardData"] });
           queryClient.invalidateQueries({ queryKey: ["databaseStatus"] });
+          refreshPage();
           showToast(t("snapshot.switchedViaFile"), "success");
         });
         const errorUnlisten = await listen<string>("data-file-open-error", (event) => {
@@ -228,7 +234,7 @@ export default function App() {
       unlistenDataFileError?.();
       unlistenDataFileEncrypted?.();
     };
-  }, [showToast, t]);
+  }, [refreshPage, showToast, t]);
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -270,6 +276,7 @@ export default function App() {
     snapshotForm,
     setSnapshotForm,
     snapshotAccounts,
+    recentAmounts,
     openNewSnapshot,
     openEditSnapshot,
     closeModal: closeSnapshotModal,
@@ -292,16 +299,23 @@ export default function App() {
     analysisChange,
     analysisGap,
     analysisDescription,
+    recurringItems,
+    recurringWindow,
     openAnalysisModal,
     saveAnalysis,
     addAnalysisItem,
     updateAnalysisItem,
     removeAnalysisItem,
+    importRecurringItems,
     closeAnalysisModal,
   } = useAnalysis({
     summaries: dashboardData.summaries,
+    analyses: dashboardData.analyses,
     showToast,
-    onSaved: refreshPage,
+    onSaved: () => {
+      refreshPage();
+      invalidateDashboard();
+    },
     setSaving,
   });
 
@@ -349,12 +363,14 @@ export default function App() {
   const safePage = Math.min(currentPage, totalPages);
 
   useEffect(() => {
-    if (pageLoadingRef.current) return;
-    pageLoadingRef.current = true;
+    let cancelled = false;
     getSnapshotsPage({ limit: pageSize, offset: (safePage - 1) * pageSize }).then((data) => {
+      if (cancelled) return;
       setPageData(data);
-      pageLoadingRef.current = false;
     });
+    return () => {
+      cancelled = true;
+    };
   }, [pageSize, safePage, pageVersion]);
 
   const summaries = dashboardData.summaries;
@@ -511,6 +527,7 @@ export default function App() {
         setDataFileInfo={setDataFileInfo}
         setDatabaseStatus={(status) => queryClient.setQueryData(["databaseStatus"], status)}
         showToast={showToast}
+        onDataFileSwitched={refreshPage}
         handleRemovePassword={handleRemovePassword}
         passwordLoading={passwordLoading}
         setPasswordChangeOpen={setPasswordChangeOpen}
@@ -559,6 +576,7 @@ export default function App() {
         snapshotForm={snapshotForm}
         setSnapshotForm={setSnapshotForm}
         snapshotAccounts={snapshotAccounts}
+        recentAmounts={recentAmounts}
         submitSnapshot={submitSnapshot}
         saving={saving}
         platforms={dashboardData.platforms}
@@ -568,14 +586,20 @@ export default function App() {
 
       <AnalysisModal
         open={analysisOpen}
-        onClose={closeAnalysisModal}
+        onClose={() => {
+          closeAnalysisModal();
+          invalidateDashboard();
+        }}
         analysisItems={analysisItems}
         analysisSummary={analysisSummary}
         analysisPrevious={analysisPrevious}
         analysisChange={analysisChange}
         analysisGap={analysisGap}
         analysisDescription={analysisDescription}
+        recurringItems={recurringItems}
+        recurringWindow={recurringWindow}
         onSave={saveAnalysis}
+        onImportRecurring={importRecurringItems}
         addAnalysisItem={addAnalysisItem}
         updateAnalysisItem={updateAnalysisItem}
         removeAnalysisItem={removeAnalysisItem}

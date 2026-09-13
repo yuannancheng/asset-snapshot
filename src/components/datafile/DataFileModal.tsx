@@ -26,6 +26,7 @@ export function DataFileModal({
   passwordLoading,
   setPasswordChangeOpen,
   setPasswordSetupOpen,
+  onDataFileSwitched,
 }: {
   open: boolean;
   onClose: () => void;
@@ -40,6 +41,7 @@ export function DataFileModal({
   passwordLoading: boolean;
   setPasswordChangeOpen: (v: boolean) => void;
   setPasswordSetupOpen: (v: boolean) => void;
+  onDataFileSwitched: () => void;
 }) {
   const { t } = useTranslation();
   const currentDir = (databaseStatus?.currentPath ?? "")
@@ -72,6 +74,7 @@ export function DataFileModal({
                 await new Promise(r => requestAnimationFrame(r));
                 const nextData = await switchDataFile({ path: selected as string });
                 setData(nextData);
+                onDataFileSwitched();
                 setLocked(false);
                 const info = await getDataFileInfo();
                 setDataFileInfo(info);
@@ -136,6 +139,7 @@ export function DataFileModal({
                 await new Promise(r => requestAnimationFrame(r));
                 const nextData = await createAndSwitchDataFile({ path: selected as string });
                 setData(nextData);
+                onDataFileSwitched();
                 setDataFileInfo({ currentPath: selected as string });
                 showToast(t("dataFile.createdAndSwitched"), "success");
                 onClose();

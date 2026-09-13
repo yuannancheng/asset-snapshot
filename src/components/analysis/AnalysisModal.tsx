@@ -1,10 +1,11 @@
-import { Loader2, Save } from "lucide-react";
+import { Download, Loader2, Repeat, Save } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../Button";
 import { Label } from "../Field";
 import { Modal } from "../Modal";
 import { AnalysisColumn } from "./AnalysisColumn";
-import { money, signedAmount } from "../../lib/format";
+import { money, signedAmount, sumAmounts } from "../../lib/format";
+import { formatSnapshotMoment } from "../../lib/date";
 import type { AnalysisItem, SnapshotSummary } from "../../lib/types";
 
 export function AnalysisModal({
@@ -16,7 +17,10 @@ export function AnalysisModal({
   analysisChange,
   analysisGap,
   analysisDescription,
+  recurringItems,
+  recurringWindow,
   onSave,
+  onImportRecurring,
   addAnalysisItem,
   updateAnalysisItem,
   removeAnalysisItem,
@@ -30,7 +34,10 @@ export function AnalysisModal({
   analysisChange: number;
   analysisGap: number;
   analysisDescription: string;
+  recurringItems: AnalysisItem[];
+  recurringWindow: number;
   onSave: () => void;
+  onImportRecurring: () => void;
   addAnalysisItem: (type: "income" | "expense") => void;
   updateAnalysisItem: (index: number, item: AnalysisItem) => void;
   removeAnalysisItem: (index: number) => void;
@@ -74,11 +81,25 @@ export function AnalysisModal({
         ) : null}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-md bg-subtle p-3">
-            <p className="text-sm text-ink/55">{t("analysis.currentTotal")}</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-sm text-ink/55">{t("analysis.currentTotal")}</p>
+              {analysisSummary ? (
+                <p className="shrink-0 text-xs text-ink/40">
+                  {formatSnapshotMoment(analysisSummary.date, analysisSummary.snapshotTime)}
+                </p>
+              ) : null}
+            </div>
             <p className="mt-1 font-semibold text-ink">{money(analysisSummary?.totalAsset ?? 0)}</p>
           </div>
           <div className="rounded-md bg-subtle p-3">
-            <p className="text-sm text-ink/55">{t("analysis.previousTotal")}</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-sm text-ink/55">{t("analysis.previousTotal")}</p>
+              {analysisPrevious ? (
+                <p className="shrink-0 text-xs text-ink/40">
+                  {formatSnapshotMoment(analysisPrevious.date, analysisPrevious.snapshotTime)}
+                </p>
+              ) : null}
+            </div>
             <p className="mt-1 font-semibold text-ink">{money(analysisPrevious?.totalAsset ?? 0)}</p>
           </div>
           <div className="rounded-md bg-subtle p-3">
@@ -97,6 +118,37 @@ export function AnalysisModal({
               <p className="text-sm text-ink/55">{t("analysis.unexplained")}</p>
               <p className="mt-1 font-semibold text-ink">{signedAmount(analysisGap)}</p>
             </div>
+
+            {recurringItems.length > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed border-moss/40 bg-mint/20 px-3 py-2">
+                <div className="min-w-0 space-y-1">
+                  <p className="flex items-center gap-1.5 text-sm text-ink/60">
+                    <Repeat size={14} className="shrink-0 text-moss" />
+                    {t("analysis.recurringHint", { count: recurringWindow })}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {recurringItems.map((item, index) => (
+                      <span
+                        key={index}
+                        className="rounded border border-ink/10 bg-panel px-1.5 py-0.5 text-xs text-ink/60"
+                      >
+                        {item.name} {money(sumAmounts(item.amounts))}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="shrink-0"
+                  onClick={onImportRecurring}
+                  disabled={saving}
+                >
+                  <Download size={16} />
+                  {t("analysis.importRecurring")}
+                </Button>
+              </div>
+            ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
               <AnalysisColumn

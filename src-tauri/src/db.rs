@@ -1044,20 +1044,25 @@ impl AppDatabase {
     fn snapshot_summaries(&self) -> Result<Vec<SnapshotSummary>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, date FROM snapshots ORDER BY date ASC, id ASC")?;
+            .prepare("SELECT id, date, snapshot_time FROM snapshots ORDER BY date ASC, id ASC")?;
         let snapshot_rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })?;
         let snapshots = snapshot_rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
         snapshots
             .into_iter()
-            .map(|(snapshot_id, date)| {
+            .map(|(snapshot_id, date, snapshot_time)| {
                 let items = self.snapshot_items_for_calc(snapshot_id)?;
                 let calculated = calculate_snapshot(&items);
                 Ok(SnapshotSummary {
                     snapshot_id,
                     date,
+                    snapshot_time,
                     total_asset: calculated.total_asset,
                     available_asset: calculated.available_asset,
                     platform_assets: calculated.platform_assets,
@@ -1128,21 +1133,26 @@ impl AppDatabase {
         offset: i64,
     ) -> Result<Vec<SnapshotSummary>, AppError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, date FROM snapshots ORDER BY date DESC, id DESC LIMIT ?1 OFFSET ?2",
+            "SELECT id, date, snapshot_time FROM snapshots ORDER BY date DESC, id DESC LIMIT ?1 OFFSET ?2",
         )?;
         let snapshot_rows = stmt.query_map(params![limit, offset], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })?;
         let snapshots = snapshot_rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
         snapshots
             .into_iter()
-            .map(|(snapshot_id, date)| {
+            .map(|(snapshot_id, date, snapshot_time)| {
                 let items = self.snapshot_items_for_calc(snapshot_id)?;
                 let calculated = calculate_snapshot(&items);
                 Ok(SnapshotSummary {
                     snapshot_id,
                     date,
+                    snapshot_time,
                     total_asset: calculated.total_asset,
                     available_asset: calculated.available_asset,
                     platform_assets: calculated.platform_assets,

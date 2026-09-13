@@ -10,6 +10,15 @@ type SnapshotForm = {
   amounts: Record<number, string>;
 };
 
+/** How many of the latest snapshots are searched for a reference amount. */
+const RECENT_SNAPSHOT_WINDOW = 3;
+
+export type RecentAmount = {
+  amount: string;
+  date: string;
+  time?: string;
+};
+
 export function useSnapshotForm({
   activeAccounts,
   accounts,
@@ -47,6 +56,30 @@ export function useSnapshotForm({
     ]);
     return accounts.filter((account) => accountIds.has(account.id));
   }, [activeAccounts, accounts, snapshots, editingSnapshotId]);
+
+  // For every account that has a non-zero balance in one of the latest
+  // snapshots, remember the newest of those balances so the modal can offer it
+  // as a one-click fill-in. When an existing snapshot is edited, only the
+  // periods before it count as sources.
+  const recentAmounts = useMemo(() => {
+    const editedIndex = editingSnapshotId
+      ? snapshots.findIndex((snapshot) => snapshot.id === editingSnapshotId)
+      : -1;
+    const end = editedIndex === -1 ? snapshots.length : editedIndex;
+    const recent = snapshots.slice(Math.max(0, end - RECENT_SNAPSHOT_WINDOW), end);
+    const result: Record<number, RecentAmount> = {};
+    for (const snapshot of recent) {
+      for (const item of snapshot.items) {
+        if (Number(item.amount) === 0) continue;
+        result[item.accountId] = {
+          amount: item.amount,
+          date: snapshot.date,
+          time: snapshot.snapshotTime,
+        };
+      }
+    }
+    return result;
+  }, [snapshots, editingSnapshotId]);
 
   const openNewSnapshot = () => {
     setEditingSnapshotId(null);
@@ -117,6 +150,7 @@ export function useSnapshotForm({
     snapshotForm,
     setSnapshotForm,
     snapshotAccounts,
+    recentAmounts,
     openNewSnapshot,
     openEditSnapshot,
     closeModal,

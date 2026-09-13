@@ -32,6 +32,7 @@ export type Snapshot = {
 export type SnapshotSummary = {
   snapshotId: number;
   date: string;
+  snapshotTime?: string;
   totalAsset: string;
   availableAsset: string;
   platformAssets: Array<{

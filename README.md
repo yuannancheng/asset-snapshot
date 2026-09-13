@@ -64,6 +64,14 @@ npm run tauri dev
 npm run tauri build
 ```
 
+On macOS you can additionally produce a `.pkg` installer (Tauri only emits `.app` / `.dmg`):
+
+```bash
+npm run build:mac-pkg
+```
+
+The package is written to `src-tauri/target/release/bundle/pkg/` and installs the app into `/Applications`. CI attaches it to GitHub releases automatically.
+
 ## Project Structure
 
 ```

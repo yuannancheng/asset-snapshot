@@ -64,6 +64,14 @@ npm run tauri dev
 npm run tauri build
 ```
 
+macOS 上如需 pkg 安装包（Tauri 只产出 `.app` / `.dmg`）：
+
+```bash
+npm run build:mac-pkg
+```
+
+产物在 `src-tauri/target/release/bundle/pkg/`，安装后应用位于「应用程序」。发布流程会自动为 macOS 附上 pkg。
+
 ## 项目结构
 
 ```

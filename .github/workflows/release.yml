@@ -90,6 +90,33 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.notes }}
           args: --bundles ${{ matrix.bundles }}
 
+      # Tauri 不产出 pkg，这里用构建好的 .app 现做一个分发安装包
+      - name: Build macOS pkg installer
+        if: runner.os == 'macOS'
+        shell: bash
+        run: scripts/build-macos-pkg.sh
+        env:
+          # 未配置这些 secrets 时为空字符串，脚本会自动跳过签名与公证
+          APPLE_INSTALLER_SIGNING_IDENTITY: ${{ secrets.APPLE_INSTALLER_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload macOS pkg installer
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PKG_PATH=$(find src-tauri/target -path '*bundle/pkg/*.pkg' -print -quit)
+          if [ -z "$PKG_PATH" ]; then
+            echo "未找到 pkg 安装包" >&2
+            exit 1
+          fi
+          echo "上传 $PKG_PATH"
+          gh release upload "${{ github.ref_name }}" "$PKG_PATH" \
+            --clobber --repo "${{ github.repository }}"
+
   publish-updater:
     needs: build
     runs-on: ubuntu-latest
