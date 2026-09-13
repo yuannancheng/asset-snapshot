@@ -3,8 +3,8 @@
 # 用已构建的 macOS .app 生成 .pkg 安装包（Tauri 本身不产出 pkg）。
 #
 # 用法：
-#   scripts/build-macos-pkg.sh                    # 自动查找 target/*/release/bundle/macos/*.app
-#   APP_PATH=/path/to/资产快照.app scripts/build-macos-pkg.sh
+#   .github/scripts/build-macos-pkg.sh                    # 自动查找 target/*/release/bundle/macos/*.app
+#   APP_PATH=/path/to/资产快照.app .github/scripts/build-macos-pkg.sh
 #
 # 可选环境变量（都为空时只生成未签名安装包）：
 #   APPLE_INSTALLER_SIGNING_IDENTITY  "Developer ID Installer" 证书名，用于 productsign 签名
@@ -16,7 +16,7 @@ log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m错误：%s\033[0m\n' "$*" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TAURI_DIR="$PROJECT_ROOT/src-tauri"
 MACOS_DIR="$TAURI_DIR/macos"
 CONFIG="$TAURI_DIR/tauri.conf.json"

@@ -90,11 +90,14 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.notes }}
           args: --bundles ${{ matrix.bundles }}
 
-      # Tauri 不产出 pkg，这里用构建好的 .app 现做一个分发安装包
+      # Tauri 不产出 pkg，这里用构建好的 .app 现做一个分发安装包。
+      # 注意：--bundles dmg 时 tauri-bundler 会清理 .app，所以先重新生成 .app（增量构建，很快）。
       - name: Build macOS pkg installer
         if: runner.os == 'macOS'
         shell: bash
-        run: scripts/build-macos-pkg.sh
+        run: |
+          npm run tauri -- build --bundles app
+          .github/scripts/build-macos-pkg.sh
         env:
           # 未配置这些 secrets 时为空字符串，脚本会自动跳过签名与公证
           APPLE_INSTALLER_SIGNING_IDENTITY: ${{ secrets.APPLE_INSTALLER_SIGNING_IDENTITY }}
