@@ -72,6 +72,18 @@ npm run build:mac-pkg
 
 The package is written to `src-tauri/target/release/bundle/pkg/` and installs the app into `/Applications`. CI attaches it to GitHub releases automatically.
 
+### Release assets
+
+Release files are named `应用名_版本号_系统名_架构名.后缀` (`app_version_os_arch.ext`), for example `asset-snapshot_0.3.5_Linux_x86.deb`:
+
+| 系统名 | 架构名 | 后缀 |
+| --- | --- | --- |
+| `Linux` | `x86` / `arm64` | `.deb`, `.AppImage` |
+| `macOS` | `x86` / `arm64` | `.dmg`, `.pkg` |
+| `Windows` | `x86` | `.exe` |
+
+`x86` covers x86_64 / amd64 builds, `arm64` covers aarch64 builds. The workflow collects bundles into `release-assets/` before uploading them to the release.
+
 ## Project Structure
 
 ```

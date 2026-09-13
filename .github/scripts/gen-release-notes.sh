@@ -14,7 +14,8 @@ GH_TOKEN="${GH_TOKEN:?GH_TOKEN is required}"
 
 # Detect previous tag if not provided
 if [ -z "${PREV_TAG:-}" ]; then
-  PREV_TAG=$(git tag --sort=-v:refname | grep -vFx "$TAG" | head -1)
+  # 仓库首个 tag 时 grep 无匹配会返回非 0，不能让它中断脚本
+  PREV_TAG=$(git tag --sort=-v:refname | grep -vFx "$TAG" | head -1 || true)
 fi
 
 # Collect commit SHAs since previous tag
@@ -38,11 +39,11 @@ fi
     SUBJECT=$(git log -1 --pretty=format:"%s" "$sha")
     SHORT=$(git log -1 --pretty=format:"%h" "$sha")
 
-    # Resolve GitHub login for commit author
-    LOGIN=$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.login // empty' 2>/dev/null)
+    # Resolve GitHub login for commit author（网络/API 异常时回退到 git 作者名）
+    LOGIN=$(gh api "repos/${REPO}/commits/${sha}" --jq '.author.login // empty' 2>/dev/null || true)
     if [ -z "$LOGIN" ]; then
       AUTHOR_EMAIL=$(git log -1 --pretty=format:"%ae" "$sha")
-      LOGIN=$(gh api "search/users?q=${AUTHOR_EMAIL}+in:email" --jq '.items[0].login // empty' 2>/dev/null)
+      LOGIN=$(gh api "search/users?q=${AUTHOR_EMAIL}+in:email" --jq '.items[0].login // empty' 2>/dev/null || true)
     fi
     if [ -z "$LOGIN" ]; then
       LOGIN=$(git log -1 --pretty=format:"%an" "$sha")

@@ -9,7 +9,48 @@ permissions:
   contents: write
 
 jobs:
+  # 先建好 Release，各构建任务随后把产物按
+  # 应用名_版本号_系统名_架构名.后缀 上传。
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: .github/scripts/gen-release-notes.sh "${RUNNER_TEMP}/release-notes.md"
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${TAG#v}"
+          NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            printf 'Release %s 已存在，更新标题与说明\n' "$TAG"
+            gh release edit "$TAG" --repo "$REPO" \
+              --title "资产快照 v${VERSION}" \
+              --notes-file "$NOTES_FILE"
+          else
+            printf '创建 Release %s\n' "$TAG"
+            gh release create "$TAG" --repo "$REPO" \
+              --verify-tag \
+              --title "资产快照 v${VERSION}" \
+              --notes-file "$NOTES_FILE"
+          fi
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -17,18 +58,28 @@ jobs:
           - platform: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bundles: deb,appimage
+            asset_system: Linux
+            asset_arch: x86
           - platform: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             bundles: deb,appimage
+            asset_system: Linux
+            asset_arch: arm64
           - platform: macos-26
             target: aarch64-apple-darwin
             bundles: dmg
+            asset_system: macOS
+            asset_arch: arm64
           - platform: macos-26-intel
             target: x86_64-apple-darwin
             bundles: dmg
+            asset_system: macOS
+            asset_arch: x86
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             bundles: nsis
+            asset_system: Windows
+            asset_arch: x86
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -63,32 +114,8 @@ jobs:
             libssl-dev \
             xdg-utils
 
-      - name: Generate release notes
-        id: notes
-        shell: bash
-        run: |
-          NOTES_FILE="${{ runner.temp }}/release-notes.md"
-          .github/scripts/gen-release-notes.sh "$NOTES_FILE"
-
-          echo 'notes<<EOF' >> "$GITHUB_OUTPUT"
-          cat "$NOTES_FILE" >> "$GITHUB_OUTPUT"
-          echo 'EOF' >> "$GITHUB_OUTPUT"
-        env:
-          TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "资产快照 v__VERSION__"
-          releaseDraft: false
-          prerelease: false
-          releaseBody: ${{ steps.notes.outputs.notes }}
-          args: --bundles ${{ matrix.bundles }}
+      - name: Build bundles
+        run: npm run tauri -- build --bundles ${{ matrix.bundles }}
 
       # Tauri 不产出 pkg，这里用构建好的 .app 现做一个分发安装包。
       # 注意：--bundles dmg 时 tauri-bundler 会清理 .app，所以先重新生成 .app（增量构建，很快）。
@@ -105,20 +132,27 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Upload macOS pkg installer
-        if: runner.os == 'macOS'
+      - name: Collect release assets
+        shell: bash
+        run: .github/scripts/collect-release-assets.sh "${{ matrix.asset_system }}" "${{ matrix.asset_arch }}"
+
+      - name: Upload release assets
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
-          PKG_PATH=$(find src-tauri/target -path '*bundle/pkg/*.pkg' -print -quit)
-          if [ -z "$PKG_PATH" ]; then
-            echo "未找到 pkg 安装包" >&2
+          shopt -s nullglob
+          FILES=(release-assets/*)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            printf '没有可上传的安装包\n' >&2
             exit 1
           fi
-          echo "上传 $PKG_PATH"
-          gh release upload "${{ github.ref_name }}" "$PKG_PATH" \
-            --clobber --repo "${{ github.repository }}"
+          for FILE in "${FILES[@]}"; do
+            printf '上传 %s\n' "$FILE"
+            gh release upload "$TAG" "$FILE" --clobber --repo "$REPO"
+          done
 
   publish-updater:
     needs: build

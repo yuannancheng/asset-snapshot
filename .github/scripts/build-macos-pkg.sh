@@ -12,6 +12,10 @@
 #
 set -euo pipefail
 
+# 注意：macOS 上 /bin/bash 是 3.2，在 C locale 下会把 "$VAR" 后面紧跟的多字节字符
+# 当成变量名的一部分（报 unbound variable）。变量后面直接跟中文或全角符号时，
+# 一律写成 "${VAR}"。
+
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m错误：%s\033[0m\n' "$*" >&2; exit 1; }
 
@@ -23,7 +27,7 @@ CONFIG="$TAURI_DIR/tauri.conf.json"
 
 [ "$(uname -s)" = "Darwin" ] || die "pkg 安装包只能在 macOS 上构建（需要 pkgbuild / productbuild）。"
 for tool in pkgbuild productbuild lipo; do
-  command -v "$tool" >/dev/null 2>&1 || die "缺少 $tool，请先安装 Xcode Command Line Tools（xcode-select --install）。"
+  command -v "$tool" >/dev/null 2>&1 || die "缺少 ${tool}，请先安装 Xcode Command Line Tools（xcode-select --install）。"
 done
 [ -f "$MACOS_DIR/distribution.xml" ] || die "缺少 $MACOS_DIR/distribution.xml"
 [ -f "$MACOS_DIR/welcome.html" ] || die "缺少 $MACOS_DIR/welcome.html"
@@ -40,8 +44,10 @@ read_config() {
     }' "$1"
 }
 
+APP_NAME="$(read_config "$CONFIG" productName)"
 VERSION="$(read_config "$CONFIG" version)"
 PKG_ID="$(read_config "$CONFIG" identifier)"
+[ -n "$APP_NAME" ] || die "无法从 tauri.conf.json 读取 productName"
 [ -n "$VERSION" ] || die "无法从 tauri.conf.json 读取 version"
 [ -n "$PKG_ID" ] || die "无法从 tauri.conf.json 读取 identifier"
 PKG_ID="$PKG_ID.pkg"
@@ -72,8 +78,8 @@ APP_BIN="$(find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f -print 2>/dev/nul
 ARCHS="$(lipo -archs "$APP_BIN")"
 case "$ARCHS" in
   *arm64*x86_64* | *x86_64*arm64*) HOST_ARCH="arm64,x86_64"; NAME_ARCH="universal" ;;
-  *arm64*) HOST_ARCH="arm64"; NAME_ARCH="aarch64" ;;
-  *x86_64*) HOST_ARCH="x86_64"; NAME_ARCH="x86_64" ;;
+  *arm64*) HOST_ARCH="arm64"; NAME_ARCH="arm64" ;;
+  *x86_64*) HOST_ARCH="x86_64"; NAME_ARCH="x86" ;;
   *) HOST_ARCH="arm64,x86_64"; NAME_ARCH="universal" ;;
 esac
 
@@ -82,13 +88,14 @@ MIN_OS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_PATH/
 
 BUNDLE_ROOT="$(dirname "$(dirname "$APP_PATH")")"
 OUT_DIR="$BUNDLE_ROOT/pkg"
-OUT_PKG="$OUT_DIR/asset-snapshot_${VERSION}_${NAME_ARCH}.pkg"
+# 命名规范：应用名_版本号_系统名_架构名.后缀
+OUT_PKG="$OUT_DIR/${APP_NAME}_${VERSION}_macOS_${NAME_ARCH}.pkg"
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/asset-snapshot-pkg.XXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 log "应用：$APP_PATH"
-log "版本：$VERSION（$NAME_ARCH，最低系统版本 $MIN_OS）"
+log "版本：${VERSION}（${NAME_ARCH}，最低系统版本 ${MIN_OS}）"
 
 log "打包组件包"
 pkgbuild \
@@ -119,7 +126,7 @@ productbuild \
   "$OUT_PKG"
 
 if [ -n "${APPLE_INSTALLER_SIGNING_IDENTITY:-}" ]; then
-  log "签名安装包（$APPLE_INSTALLER_SIGNING_IDENTITY）"
+  log "签名安装包（${APPLE_INSTALLER_SIGNING_IDENTITY}）"
   productsign --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" "$OUT_PKG" "$OUT_PKG.signed"
   mv "$OUT_PKG.signed" "$OUT_PKG"
 else

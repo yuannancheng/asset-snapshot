@@ -72,6 +72,18 @@ npm run build:mac-pkg
 
 产物在 `src-tauri/target/release/bundle/pkg/`，安装后应用位于「应用程序」。发布流程会自动为 macOS 附上 pkg。
 
+### 发布产物命名
+
+发布文件名统一为 `应用名_版本号_系统名_架构名.后缀`，例如 `asset-snapshot_0.3.5_Linux_x86.deb`：
+
+| 系统名 | 架构名 | 后缀 |
+| --- | --- | --- |
+| `Linux` | `x86` / `arm64` | `.deb`、`.AppImage` |
+| `macOS` | `x86` / `arm64` | `.dmg`、`.pkg` |
+| `Windows` | `x86` | `.exe` |
+
+`x86` 对应 x86_64 / amd64 构建，`arm64` 对应 aarch64 构建。工作流会先把各平台安装包收集到 `release-assets/`，再统一上传到 Release。
+
 ## 项目结构
 
 ```

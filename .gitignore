@@ -3,6 +3,7 @@ dist
 dist-ssr
 target
 src-tauri/target
+release-assets
 .git-store
 *.db
 *.db-shm
